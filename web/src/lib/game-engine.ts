@@ -102,6 +102,7 @@ export class GameEngine {
   private animationId: number | null = null;
   private callbacks: GameCallbacks;
   private isRunning = false;
+  private isDemoMode = false;
   private lastTime = 0;
   private lastReportedScore = -1;
 
@@ -307,11 +308,55 @@ export class GameEngine {
 
   stop() {
     this.isRunning = false;
+    this.isDemoMode = false;
     if (this.animationId !== null) {
       cancelAnimationFrame(this.animationId);
       this.animationId = null;
     }
   }
+
+  startDemo() {
+    this.isDemoMode = true;
+    this.isRunning = false;
+    this.score = 0;
+    this.displayScore = 0;
+    this.speed = OBSTACLE_SPEED_START;
+    this.frameCount = 0;
+    this.obstacles = [];
+    this.particles = [];
+    this.fluffle = this.createFluffle();
+    this.fluffle.state = "running";
+    this.lastTime = performance.now();
+    this.demoLoop();
+  }
+
+  stopDemo() {
+    this.isDemoMode = false;
+    if (this.animationId !== null) {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = null;
+    }
+  }
+
+  private demoLoop = () => {
+    if (!this.isDemoMode) return;
+
+    const now = performance.now();
+    const delta = now - this.lastTime;
+
+    if (delta >= 16) {
+      this.lastTime = now;
+      // Update parallax and fluffle animation only — no obstacles, no scoring
+      this.bgOffset1 += this.speed * 0.1;
+      this.bgOffset2 += this.speed * 0.3;
+      this.bgOffset3 += this.speed * 0.6;
+      this.fluffle.frame += 0.15;
+      this.frameCount++;
+      this.render();
+    }
+
+    this.animationId = requestAnimationFrame(this.demoLoop);
+  };
 
   getScore(): number {
     return Math.floor(this.score);

@@ -3,11 +3,14 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useAccount } from "wagmi";
 import { formatEther } from "viem";
+import dynamic from "next/dynamic";
 import Game from "@/components/Game";
 import HUD from "@/components/HUD";
 import WalletConnect from "@/components/WalletConnect";
 import TournamentCard from "@/components/TournamentCard";
 import Leaderboard from "@/components/Leaderboard";
+
+const GameDemo = dynamic(() => import("@/components/GameDemo"), { ssr: false });
 import {
   useTournamentCount,
   useTournament,
@@ -18,7 +21,7 @@ import { useLeaderboard } from "@/hooks/useLeaderboard";
 import { useOperator } from "@/hooks/useGame";
 
 const MAX_ATTEMPTS = 3;
-const ACTIVE_TOURNAMENT_ID = 1; // first tournament
+const ACTIVE_TOURNAMENT_ID = 2;
 
 type View = "lobby" | "game";
 
@@ -248,124 +251,276 @@ export default function Home() {
 
   // --- LOBBY VIEW ---
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a1a]">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-cyan-500/20">
-        <div className="flex items-center gap-2">
-          <span
-            className="text-xl font-bold tracking-wider"
-            style={{
-              color: "#00f0ff",
-              textShadow: "0 0 10px rgba(0,240,255,0.5)",
-            }}
-          >
-            FLUFFLE DASH
-          </span>
-          <span className="text-xs text-purple-400/60 hidden sm:inline">
-            by MegaRally
-          </span>
-        </div>
+    <div className="min-h-screen bg-[#0a0a1a] text-white">
+      {/* Fixed Header */}
+      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 border-b border-cyan-500/20 bg-[#0a0a1a]/90 backdrop-blur-sm">
+        <span
+          className="text-lg font-bold tracking-wider"
+          style={{
+            color: "#00f0ff",
+            textShadow: "0 0 10px rgba(0,240,255,0.5)",
+          }}
+        >
+          FLUFFLE DASH
+        </span>
         <WalletConnect />
       </header>
 
-      <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 space-y-6">
-        {/* Hero */}
-        <div className="text-center space-y-2">
+      {/* ===== HERO SECTION ===== */}
+      <section className="relative min-h-[70vh] md:min-h-[80vh] flex items-center justify-center overflow-hidden pt-14">
+        {/* Demo game background */}
+        <div className="absolute inset-0 opacity-40">
+          <GameDemo />
+        </div>
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a1a]/60 via-transparent to-[#0a0a1a]" />
+
+        <div className="relative z-10 text-center px-4 space-y-6">
           <h1
-            className="text-3xl md:text-5xl font-bold"
+            className="text-5xl sm:text-6xl md:text-8xl font-extrabold tracking-tight"
             style={{
               color: "#00f0ff",
-              textShadow: "0 0 30px rgba(0,240,255,0.3)",
+              textShadow:
+                "0 0 40px rgba(0,240,255,0.4), 0 0 80px rgba(0,240,255,0.2)",
             }}
           >
             FLUFFLE DASH
           </h1>
-          <p className="text-gray-500 text-sm">
-            Onchain endless runner on MegaETH. Every obstacle recorded. Scores
-            fully verifiable.
+          <p className="text-gray-400 text-base md:text-lg max-w-xl mx-auto">
+            The first real-time onchain endless runner on MegaETH
           </p>
-        </div>
-
-        {/* Tournament */}
-        {tournamentData && tournamentData.id > 0 && (
-          <div>
-            <h2
-              className="text-sm font-bold uppercase tracking-wider mb-3"
-              style={{ color: "#b024ff" }}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <button
+              onClick={() => {
+                handleReset();
+                setView("game");
+              }}
+              className="px-8 py-3 rounded-lg font-bold text-black text-base transition-all hover:scale-105"
+              style={{
+                background: "linear-gradient(135deg, #00f0ff, #b024ff)",
+              }}
             >
-              Active Tournament
-            </h2>
-            <TournamentCard
-              id={tournamentData.id}
-              entryFee={tournamentData.entryFee}
-              endTime={tournamentData.endTime}
-              prizePool={tournamentData.prizePool}
-              playerCount={leaderboard.length}
-              ended={tournamentData.ended}
-              isEntered={isEntered}
-              onEnter={handleEnter}
-              onPlay={handlePlay}
-              entering={entering}
-            />
-
+              PLAY NOW
+            </button>
             {!isConnected && (
-              <p className="text-center text-gray-600 text-xs mt-2">
-                Connect your wallet to enter
-              </p>
+              <button
+                onClick={() => {
+                  // Scroll to tournament section
+                  document.getElementById("tournament")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="px-8 py-3 rounded-lg font-bold text-base border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 transition-all"
+              >
+                ENTER TOURNAMENT
+              </button>
             )}
+          </div>
+        </div>
+      </section>
 
-            {isEntered && (
-              <div className="mt-2 text-center">
-                <p className="text-xs text-gray-500">
-                  Attempts used: {contractAttemptsUsed}/{MAX_ATTEMPTS}
-                  {contractAttemptsUsed > 0 && (
-                    <span className="ml-2">
-                      Total score:{" "}
-                      <span style={{ color: "#ffe814" }}>
-                        {Number(entry?.totalScore || 0)}
-                      </span>
-                    </span>
-                  )}
+      {/* ===== HOW IT WORKS ===== */}
+      <section className="py-16 md:py-24 px-4">
+        <div className="max-w-4xl mx-auto">
+          <h2
+            className="text-sm font-bold uppercase tracking-widest text-center mb-12"
+            style={{ color: "#b024ff" }}
+          >
+            How It Works
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {[
+              {
+                step: "01",
+                title: "Connect",
+                desc: "Connect your wallet and enter a tournament with a small ETH entry fee.",
+              },
+              {
+                step: "02",
+                title: "Play",
+                desc: "Jump over obstacles and rack up points. You get 3 attempts per tournament.",
+              },
+              {
+                step: "03",
+                title: "Win",
+                desc: "Highest total score across all 3 runs wins the prize pool (98%).",
+              },
+            ].map((item) => (
+              <div key={item.step} className="text-center md:text-left">
+                <div
+                  className="text-4xl font-extrabold mb-2"
+                  style={{
+                    color: "#00f0ff",
+                    textShadow: "0 0 15px rgba(0,240,255,0.3)",
+                  }}
+                >
+                  {item.step}
+                </div>
+                <h3 className="text-lg font-bold text-white mb-1">
+                  {item.title}
+                </h3>
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  {item.desc}
                 </p>
               </div>
-            )}
+            ))}
           </div>
-        )}
+        </div>
+      </section>
 
-        {!tournamentData && (
-          <div className="text-center py-8">
-            <div className="text-gray-600">Loading tournaments...</div>
+      {/* ===== FEATURES GRID ===== */}
+      <section className="py-16 md:py-24 px-4 border-t border-cyan-500/10">
+        <div className="max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[
+              {
+                title: "Real-Time Blockchain",
+                desc: "Every obstacle, every score, verified on MegaETH in <10ms.",
+                color: "#00f0ff",
+              },
+              {
+                title: "Tournament Prizes",
+                desc: "Entry fees pool together. Winner takes 98%.",
+                color: "#ffe814",
+              },
+              {
+                title: "Fully Onchain",
+                desc: "No server trust. Operator relays, chain verifies.",
+                color: "#b024ff",
+              },
+              {
+                title: "3 Attempts",
+                desc: "Best combined score across 3 runs wins. Strategy matters.",
+                color: "#ff2d95",
+              },
+            ].map((feature) => (
+              <div
+                key={feature.title}
+                className="rounded-xl p-5 border border-white/5 bg-white/[0.02]"
+              >
+                <h3
+                  className="font-bold text-sm uppercase tracking-wider mb-1"
+                  style={{ color: feature.color }}
+                >
+                  {feature.title}
+                </h3>
+                <p className="text-gray-500 text-sm">{feature.desc}</p>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      </section>
 
-        {/* Leaderboard */}
-        <div>
+      {/* ===== ACTIVE TOURNAMENT ===== */}
+      <section
+        id="tournament"
+        className="py-16 md:py-24 px-4 border-t border-cyan-500/10"
+      >
+        <div className="max-w-2xl mx-auto">
           <h2
-            className="text-sm font-bold uppercase tracking-wider mb-3"
+            className="text-sm font-bold uppercase tracking-widest text-center mb-8"
+            style={{ color: "#b024ff" }}
+          >
+            Active Tournament
+          </h2>
+
+          {tournamentData && tournamentData.id > 0 ? (
+            <div>
+              <TournamentCard
+                id={tournamentData.id}
+                entryFee={tournamentData.entryFee}
+                endTime={tournamentData.endTime}
+                prizePool={tournamentData.prizePool}
+                playerCount={leaderboard.length}
+                ended={tournamentData.ended}
+                isEntered={isEntered}
+                onEnter={handleEnter}
+                onPlay={handlePlay}
+                entering={entering}
+              />
+
+              {!isConnected && (
+                <p className="text-center text-gray-600 text-xs mt-3">
+                  Connect your wallet to enter
+                </p>
+              )}
+
+              {isEntered && (
+                <div className="mt-3 text-center">
+                  <p className="text-xs text-gray-500">
+                    Attempts used: {contractAttemptsUsed}/{MAX_ATTEMPTS}
+                    {contractAttemptsUsed > 0 && (
+                      <span className="ml-2">
+                        Total score:{" "}
+                        <span style={{ color: "#ffe814" }}>
+                          {Number(entry?.totalScore || 0)}
+                        </span>
+                      </span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-gray-600">Loading tournament...</div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ===== LEADERBOARD ===== */}
+      <section className="py-16 md:py-24 px-4 border-t border-cyan-500/10">
+        <div className="max-w-2xl mx-auto">
+          <h2
+            className="text-sm font-bold uppercase tracking-widest text-center mb-8"
             style={{ color: "#ffe814" }}
           >
             Leaderboard
           </h2>
           <Leaderboard entries={leaderboard} currentPlayer={address} />
         </div>
+      </section>
 
-        {/* Practice mode */}
-        <div className="border-t border-cyan-500/10 pt-4">
+      {/* ===== PRACTICE MODE ===== */}
+      <section className="py-16 px-4 border-t border-cyan-500/10">
+        <div className="max-w-md mx-auto text-center">
+          <p className="text-gray-500 text-sm mb-4">
+            Want to try before you commit?
+          </p>
           <button
             onClick={() => {
               handleReset();
               setView("game");
             }}
-            className="w-full py-3 rounded-lg font-bold text-sm border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/5 transition-colors"
+            className="px-8 py-3 rounded-lg font-bold text-sm border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 transition-all"
           >
-            PRACTICE MODE (no wallet needed)
+            PRACTICE MODE — NO WALLET NEEDED
           </button>
         </div>
-      </div>
+      </section>
 
-      <footer className="text-center py-3 text-xs text-gray-700 border-t border-cyan-500/10">
-        Scores verified onchain on MegaETH &middot; Contract{" "}
-        <span className="font-mono text-gray-600">0x6d32...bA5b</span>
+      {/* ===== FOOTER ===== */}
+      <footer className="py-8 px-4 border-t border-cyan-500/10">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
+          <div className="flex items-center gap-4">
+            <a
+              href="https://testnet.megaethscan.io/address/0x6d32B9c3d539b2066b2b44915e09CDe94673bA5b"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono hover:text-cyan-400 transition-colors"
+            >
+              0x6d32...bA5b
+            </a>
+            <span>Built on MegaETH</span>
+          </div>
+          <a
+            href="https://github.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-cyan-400 transition-colors"
+          >
+            GitHub
+          </a>
+        </div>
       </footer>
     </div>
   );
