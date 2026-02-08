@@ -22,47 +22,46 @@ export default function Game({
 }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
+  const scoreRef = useRef<HTMLSpanElement>(null);
   const [gameState, setGameState] = useState<"idle" | "playing" | "dead">(
     "idle"
   );
-  const [score, setScore] = useState(0);
+  const [finalScore, setFinalScore] = useState(0);
 
-  const handleGameOver = useCallback(
-    (finalScore: number) => {
-      setGameState("dead");
-      onGameOver(finalScore);
-    },
-    [onGameOver]
-  );
+  // Store callbacks in refs so engine never needs to be recreated
+  const callbackRefs = useRef({ onGameOver, onScoreChange, onObstaclePassed });
+  callbackRefs.current = { onGameOver, onScoreChange, onObstaclePassed };
 
-  const handleScoreChange = useCallback(
-    (newScore: number) => {
-      setScore(newScore);
-      onScoreChange(newScore);
-    },
-    [onScoreChange]
-  );
-
-  // Initialize engine
+  // Initialize engine — only depends on canvas mount, never recreated
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const callbacks: GameCallbacks = {
-      onScoreChange: handleScoreChange,
-      onGameOver: handleGameOver,
-      onObstaclePassed,
+      onScoreChange: (newScore: number) => {
+        // Direct DOM update — bypasses React entirely
+        if (scoreRef.current) {
+          scoreRef.current.textContent = String(newScore);
+        }
+        callbackRefs.current.onScoreChange(newScore);
+      },
+      onGameOver: (score: number) => {
+        setFinalScore(score);
+        setGameState("dead");
+        callbackRefs.current.onGameOver(score);
+      },
+      onObstaclePassed: (id: number) => {
+        callbackRefs.current.onObstaclePassed(id);
+      },
     };
 
     const engine = new GameEngine(canvas, callbacks);
     engineRef.current = engine;
 
-    // Initial sizing
     const resize = () => {
       const container = canvas.parentElement;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      // 16:9 aspect ratio
       let w = rect.width;
       let h = w * (9 / 16);
       if (h > rect.height) {
@@ -70,9 +69,6 @@ export default function Game({
         w = h * (16 / 9);
       }
       engine.resize(w, h);
-      if (gameState === "idle") {
-        engine.renderIdle();
-      }
     };
 
     resize();
@@ -83,7 +79,7 @@ export default function Game({
       window.removeEventListener("resize", resize);
       engine.stop();
     };
-  }, [handleGameOver, handleScoreChange, onObstaclePassed]);
+  }, []);
 
   // Handle input
   const handleInput = useCallback(() => {
@@ -92,17 +88,16 @@ export default function Game({
 
     if (gameState === "idle") {
       setGameState("playing");
-      setScore(0);
+      if (scoreRef.current) scoreRef.current.textContent = "0";
       engine.start();
       onStart();
-      // Jump on first tap too
       setTimeout(() => engine.jump(), 50);
     } else if (gameState === "playing") {
       engine.jump();
     } else if (gameState === "dead") {
       if (attemptNumber < maxAttempts) {
         setGameState("playing");
-        setScore(0);
+        if (scoreRef.current) scoreRef.current.textContent = "0";
         engine.start();
         onStart();
         setTimeout(() => engine.jump(), 50);
@@ -178,7 +173,7 @@ export default function Game({
                 textShadow: "0 0 15px #00f0ff",
               }}
             >
-              {score}
+              {finalScore}
             </p>
             {attemptNumber < maxAttempts ? (
               <p
@@ -196,17 +191,18 @@ export default function Game({
         </div>
       )}
 
-      {/* Score display during gameplay */}
+      {/* Score display during gameplay — updated via ref, no React re-renders */}
       {gameState === "playing" && (
         <div className="absolute top-4 right-4 pointer-events-none">
           <span
+            ref={scoreRef}
             className="text-3xl md:text-5xl font-bold tabular-nums"
             style={{
               color: "#00f0ff",
               textShadow: "0 0 15px #00f0ff",
             }}
           >
-            {score}
+            0
           </span>
         </div>
       )}

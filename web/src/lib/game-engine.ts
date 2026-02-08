@@ -102,6 +102,7 @@ export class GameEngine {
   private callbacks: GameCallbacks;
   private isRunning = false;
   private lastTime = 0;
+  private lastReportedScore = -1;
 
   // Parallax offsets
   private bgOffset1 = 0;
@@ -110,6 +111,12 @@ export class GameEngine {
 
   // Pre-rendered overlay
   private scanlineCanvas: HTMLCanvasElement | null = null;
+
+  // Pre-rendered building layers
+  private farBuildingCanvas: HTMLCanvasElement | null = null;
+  private farBuildingWidth = 0;
+  private midBuildingCanvas: HTMLCanvasElement | null = null;
+  private midBuildingWidth = 0;
 
   // Buildings for parallax layers
   private farBuildings: { x: number; w: number; h: number; color: string }[] = [];
@@ -198,6 +205,47 @@ export class GameEngine {
       });
       x += w + Math.random() * 30;
     }
+
+    this.prerenderBuildings();
+  }
+
+  private prerenderBuildings() {
+    const groundY = this.groundY;
+
+    // Far buildings
+    const farLast = this.farBuildings[this.farBuildings.length - 1];
+    const farTotalW = farLast ? farLast.x + farLast.w : this.canvas.width;
+    this.farBuildingWidth = farTotalW;
+    this.farBuildingCanvas = document.createElement("canvas");
+    this.farBuildingCanvas.width = farTotalW;
+    this.farBuildingCanvas.height = this.canvas.height;
+    const fctx = this.farBuildingCanvas.getContext("2d")!;
+    for (const b of this.farBuildings) {
+      fctx.fillStyle = b.color;
+      fctx.fillRect(b.x, groundY - b.h, b.w, b.h);
+      fctx.fillStyle = "rgba(176, 36, 255, 0.08)";
+      fctx.fillRect(b.x, groundY - b.h, b.w, 4);
+    }
+
+    // Mid buildings
+    const midLast = this.midBuildings[this.midBuildings.length - 1];
+    const midTotalW = midLast ? midLast.x + midLast.w : this.canvas.width;
+    this.midBuildingWidth = midTotalW;
+    this.midBuildingCanvas = document.createElement("canvas");
+    this.midBuildingCanvas.width = midTotalW;
+    this.midBuildingCanvas.height = this.canvas.height;
+    const mctx = this.midBuildingCanvas.getContext("2d")!;
+    for (const b of this.midBuildings) {
+      mctx.fillStyle = b.color;
+      mctx.fillRect(b.x, groundY - b.h, b.w, b.h);
+      // Windows — pre-bake at alpha
+      mctx.globalAlpha = 0.3;
+      for (const win of b.windows) {
+        mctx.fillStyle = win.color;
+        mctx.fillRect(b.x + win.x, groundY - b.h + win.y, 6, 8);
+      }
+      mctx.globalAlpha = 1;
+    }
   }
 
   private prerenderScanlines() {
@@ -245,6 +293,7 @@ export class GameEngine {
     this.obstacles = [];
     this.particles = [];
     this.obstacleIdCounter = 0;
+    this.lastReportedScore = -1;
     this.fluffle = this.createFluffle();
     this.nextObstacleX = 300;
     this.isRunning = true;
@@ -289,7 +338,11 @@ export class GameEngine {
     this.speed = Math.min(MAX_SPEED, OBSTACLE_SPEED_START + this.frameCount * OBSTACLE_SPEED_INCREMENT);
     this.score += DISTANCE_SCORE_RATE * (this.speed / OBSTACLE_SPEED_START);
     this.displayScore += (this.score - this.displayScore) * 0.3;
-    this.callbacks.onScoreChange(Math.floor(this.score));
+    const intScore = Math.floor(this.score);
+    if (intScore !== this.lastReportedScore) {
+      this.lastReportedScore = intScore;
+      this.callbacks.onScoreChange(intScore);
+    }
     this.updateFluffle();
     this.updateObstacles();
     this.spawnObstacles();
@@ -323,7 +376,11 @@ export class GameEngine {
         obs.passed = true;
         this.obstaclesPassed++;
         this.score += OBSTACLE_BONUS;
-        this.callbacks.onScoreChange(Math.floor(this.score));
+        const intScore = Math.floor(this.score);
+        if (intScore !== this.lastReportedScore) {
+          this.lastReportedScore = intScore;
+          this.callbacks.onScoreChange(intScore);
+        }
         this.callbacks.onObstaclePassed(obs.id);
         this.spawnScoreParticles(obs.x + obs.width, obs.y);
       }
@@ -515,43 +572,19 @@ export class GameEngine {
   }
 
   private drawFarBuildings(ctx: CanvasRenderingContext2D) {
-    const totalWidth = this.farBuildings.length > 0
-      ? this.farBuildings[this.farBuildings.length - 1].x + this.farBuildings[this.farBuildings.length - 1].w
-      : this.canvas.width;
-    const offset = this.bgOffset1 % totalWidth;
-
-    for (const b of this.farBuildings) {
-      const x = b.x - offset;
-      const drawX = x < -b.w ? x + totalWidth : x;
-      ctx.fillStyle = b.color;
-      ctx.fillRect(drawX, this.groundY - b.h, b.w, b.h);
-      // Simple top edge highlight instead of gradient
-      ctx.fillStyle = "rgba(176, 36, 255, 0.08)";
-      ctx.fillRect(drawX, this.groundY - b.h, b.w, 4);
-    }
+    if (!this.farBuildingCanvas) return;
+    const tw = this.farBuildingWidth;
+    const offset = this.bgOffset1 % tw;
+    ctx.drawImage(this.farBuildingCanvas, -offset, 0);
+    ctx.drawImage(this.farBuildingCanvas, tw - offset, 0);
   }
 
   private drawMidBuildings(ctx: CanvasRenderingContext2D) {
-    const totalWidth = this.midBuildings.length > 0
-      ? this.midBuildings[this.midBuildings.length - 1].x + this.midBuildings[this.midBuildings.length - 1].w
-      : this.canvas.width;
-    const offset = this.bgOffset2 % totalWidth;
-
-    for (const b of this.midBuildings) {
-      const x = b.x - offset;
-      const drawX = x < -b.w ? x + totalWidth : x;
-
-      ctx.fillStyle = b.color;
-      ctx.fillRect(drawX, this.groundY - b.h, b.w, b.h);
-
-      // Windows — pre-computed colors, no Math.random per frame
-      for (const win of b.windows) {
-        ctx.fillStyle = win.color;
-        ctx.globalAlpha = 0.3;
-        ctx.fillRect(drawX + win.x, this.groundY - b.h + win.y, 6, 8);
-      }
-      ctx.globalAlpha = 1;
-    }
+    if (!this.midBuildingCanvas) return;
+    const tw = this.midBuildingWidth;
+    const offset = this.bgOffset2 % tw;
+    ctx.drawImage(this.midBuildingCanvas, -offset, 0);
+    ctx.drawImage(this.midBuildingCanvas, tw - offset, 0);
   }
 
   private drawGround(ctx: CanvasRenderingContext2D) {
@@ -575,23 +608,21 @@ export class GameEngine {
     ctx.lineTo(w, this.groundY);
     ctx.stroke();
 
-    // Grid lines
+    // Grid lines — batched into single path
     ctx.strokeStyle = "rgba(0, 240, 255, 0.12)";
     ctx.lineWidth = 1;
+    ctx.beginPath();
     const gridSpacing = 60;
     const offset = this.bgOffset3 % gridSpacing;
     for (let gx = -offset; gx < w; gx += gridSpacing) {
-      ctx.beginPath();
       ctx.moveTo(gx, this.groundY);
       ctx.lineTo(gx, this.groundY + GROUND_OFFSET);
-      ctx.stroke();
     }
     for (let gy = this.groundY + 20; gy < this.groundY + GROUND_OFFSET; gy += 20) {
-      ctx.beginPath();
       ctx.moveTo(0, gy);
       ctx.lineTo(w, gy);
-      ctx.stroke();
     }
+    ctx.stroke();
   }
 
   private drawObstacles(ctx: CanvasRenderingContext2D) {
@@ -632,15 +663,15 @@ export class GameEngine {
     ctx.arc(cx, obs.y - 1, 4, Math.PI, 0);
     ctx.stroke();
 
-    // Horizontal ridges
+    // Horizontal ridges — batched
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.lineWidth = 1;
+    ctx.beginPath();
     for (let ry = obs.y + 14; ry < obs.y + obs.height - 6; ry += 10) {
-      ctx.beginPath();
       ctx.moveTo(obs.x + 4, ry);
       ctx.lineTo(obs.x + obs.width - 4, ry);
-      ctx.stroke();
     }
+    ctx.stroke();
 
     // Neon stripe — glow via thicker transparent line behind
     const stripeY = obs.y + obs.height * 0.5;
@@ -951,18 +982,9 @@ export class GameEngine {
     ctx.closePath();
     ctx.fill();
 
-    // Hood neon edge — glow via layered stroke
+    // Hood neon edge
     ctx.strokeStyle = outlineColor;
-    ctx.globalAlpha = 0.3;
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(f.x, f.y + f.height * 0.33);
-    ctx.quadraticCurveTo(f.x - 1, f.y - 4, f.x + f.width * 0.15, f.y - 12);
-    ctx.quadraticCurveTo(cx, f.y - 18, f.x + f.width * 0.85, f.y - 12);
-    ctx.quadraticCurveTo(f.x + f.width + 1, f.y - 4, f.x + f.width, f.y + f.height * 0.33);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(f.x, f.y + f.height * 0.33);
     ctx.quadraticCurveTo(f.x - 1, f.y - 4, f.x + f.width * 0.15, f.y - 12);
@@ -987,17 +1009,9 @@ export class GameEngine {
       ctx.closePath();
       ctx.fill();
 
-      // Ear outline — glow via layered stroke
+      // Ear outline
       ctx.strokeStyle = outlineColor;
-      ctx.globalAlpha = 0.3;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(earX, earBaseY);
-      ctx.quadraticCurveTo(tipX - side * 2, earBaseY - earH - 2, tipX, earBaseY - earH);
-      ctx.quadraticCurveTo(tipX + side * 2, earBaseY - earH - 2, earX + earW, earBaseY);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(earX, earBaseY);
       ctx.quadraticCurveTo(tipX - side * 2, earBaseY - earH - 2, tipX, earBaseY - earH);
@@ -1110,14 +1124,9 @@ export class GameEngine {
       ctx.lineCap = "butt";
     }
 
-    // --- BODY OUTLINE — glow via layered stroke ---
+    // --- BODY OUTLINE ---
     ctx.strokeStyle = outlineColor;
-    ctx.globalAlpha = 0.25;
-    ctx.lineWidth = 4;
-    this.roundRect(ctx, f.x, f.y + f.height * 0.15, f.width, f.height * 0.85, 8);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     this.roundRect(ctx, f.x, f.y + f.height * 0.15, f.width, f.height * 0.85, 8);
     ctx.stroke();
 
