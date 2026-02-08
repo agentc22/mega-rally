@@ -54,7 +54,7 @@ interface Star {
 // --- TUNING ---
 const GRAVITY = 0.55;
 const JUMP_VELOCITY = -14;
-const GROUND_OFFSET = 100;
+const GROUND_OFFSET_RATIO = 0.15; // ground area = 15% of canvas height
 const OBSTACLE_SPEED_START = 6;
 const OBSTACLE_SPEED_INCREMENT = 0.0008;
 const MAX_SPEED = 14;
@@ -97,6 +97,7 @@ export class GameEngine {
   private speed = OBSTACLE_SPEED_START;
   private frameCount = 0;
   private groundY = 0;
+  private groundOffset = 100;
   private nextObstacleX = 0;
   private animationId: number | null = null;
   private callbacks: GameCallbacks;
@@ -133,7 +134,8 @@ export class GameEngine {
     this.ctx = canvas.getContext("2d")!;
     this.callbacks = callbacks;
 
-    this.groundY = canvas.height - GROUND_OFFSET;
+    this.groundOffset = Math.max(60, Math.round(canvas.height * GROUND_OFFSET_RATIO));
+    this.groundY = canvas.height - this.groundOffset;
     this.fluffle = this.createFluffle();
     this.generateBuildings();
     this.generateStars();
@@ -265,7 +267,8 @@ export class GameEngine {
   resize(width: number, height: number) {
     this.canvas.width = width;
     this.canvas.height = height;
-    this.groundY = height - GROUND_OFFSET;
+    this.groundOffset = Math.max(60, Math.round(height * GROUND_OFFSET_RATIO));
+    this.groundY = height - this.groundOffset;
     if (!this.isRunning) {
       this.fluffle.y = this.groundY - FLUFFLE_SIZE;
     }
@@ -591,7 +594,7 @@ export class GameEngine {
     const w = this.canvas.width;
 
     ctx.fillStyle = "#0f0f2a";
-    ctx.fillRect(0, this.groundY, w, GROUND_OFFSET);
+    ctx.fillRect(0, this.groundY, w, this.groundOffset);
 
     // Ground line — single glow using two lines instead of shadowBlur
     ctx.strokeStyle = "rgba(0,240,255,0.3)";
@@ -616,9 +619,9 @@ export class GameEngine {
     const offset = this.bgOffset3 % gridSpacing;
     for (let gx = -offset; gx < w; gx += gridSpacing) {
       ctx.moveTo(gx, this.groundY);
-      ctx.lineTo(gx, this.groundY + GROUND_OFFSET);
+      ctx.lineTo(gx, this.groundY + this.groundOffset);
     }
-    for (let gy = this.groundY + 20; gy < this.groundY + GROUND_OFFSET; gy += 20) {
+    for (let gy = this.groundY + 20; gy < this.groundY + this.groundOffset; gy += 20) {
       ctx.moveTo(0, gy);
       ctx.lineTo(w, gy);
     }

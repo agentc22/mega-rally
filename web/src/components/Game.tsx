@@ -62,14 +62,20 @@ export default function Game({
       const container = canvas.parentElement;
       if (!container) return;
       const rect = container.getBoundingClientRect();
-      // Fit 16:9 within available container space
-      let w = rect.width;
-      let h = w * (9 / 16);
-      if (h > rect.height) {
+      let w: number, h: number;
+      if (rect.height > rect.width) {
+        // Portrait (mobile): fill the container
+        w = rect.width;
         h = rect.height;
-        w = h * (16 / 9);
+      } else {
+        // Landscape / desktop: 16:9 aspect ratio
+        w = rect.width;
+        h = w * (9 / 16);
+        if (h > rect.height) {
+          h = rect.height;
+          w = h * (16 / 9);
+        }
       }
-      // Set CSS display size to match computed dimensions
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       engine.resize(Math.round(w), Math.round(h));
