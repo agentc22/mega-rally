@@ -149,9 +149,9 @@ export default function Home() {
   // --- GAME VIEW ---
   if (view === "game") {
     return (
-      <div className="min-h-screen flex flex-col bg-[#0a0a1a]">
+      <div className="h-dvh flex flex-col bg-[#0a0a1a] overflow-hidden">
         {/* Header */}
-        <header className="flex items-center justify-between px-4 py-2 border-b border-cyan-500/20">
+        <header className="flex items-center justify-between px-4 py-1 border-b border-cyan-500/20 shrink-0">
           <div className="flex items-center gap-2">
             <button
               onClick={handleBackToLobby}
@@ -160,7 +160,7 @@ export default function Home() {
               &larr; Back
             </button>
             <span
-              className="text-lg font-bold tracking-wider"
+              className="text-base font-bold tracking-wider"
               style={{
                 color: "#00f0ff",
                 textShadow: "0 0 10px rgba(0,240,255,0.5)",
@@ -173,16 +173,18 @@ export default function Home() {
         </header>
 
         {/* HUD */}
-        <HUD
-          scores={scores}
-          currentAttempt={currentAttempt}
-          maxAttempts={MAX_ATTEMPTS}
-          totalScore={totalScore}
-        />
+        <div className="shrink-0">
+          <HUD
+            scores={scores}
+            currentAttempt={currentAttempt}
+            maxAttempts={MAX_ATTEMPTS}
+            totalScore={totalScore}
+          />
+        </div>
 
         {/* Game */}
-        <div className="flex-1 flex items-center justify-center p-2 md:p-4">
-          <div className="w-full max-w-4xl">
+        <div className="flex-1 flex items-center justify-center p-1 md:p-4 min-h-0">
+          <div className="w-full h-full max-w-4xl">
             <Game
               attemptNumber={currentAttempt}
               maxAttempts={MAX_ATTEMPTS}
@@ -237,7 +239,7 @@ export default function Home() {
           </div>
         )}
 
-        <footer className="text-center py-2 text-xs text-gray-700 border-t border-cyan-500/10">
+        <footer className="text-center py-1 text-xs text-gray-700 border-t border-cyan-500/10 shrink-0">
           Scores verified onchain on MegaETH
         </footer>
       </div>

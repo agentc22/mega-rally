@@ -62,13 +62,17 @@ export default function Game({
       const container = canvas.parentElement;
       if (!container) return;
       const rect = container.getBoundingClientRect();
+      // Fit 16:9 within available container space
       let w = rect.width;
       let h = w * (9 / 16);
       if (h > rect.height) {
         h = rect.height;
         w = h * (16 / 9);
       }
-      engine.resize(w, h);
+      // Set CSS display size to match computed dimensions
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      engine.resize(Math.round(w), Math.round(h));
     };
 
     resize();
@@ -118,7 +122,7 @@ export default function Game({
   }, [handleInput]);
 
   return (
-    <div className="relative w-full" style={{ aspectRatio: "16/9" }}>
+    <div className="relative w-full h-full flex items-center justify-center">
       <canvas
         ref={canvasRef}
         onClick={handleInput}
@@ -126,7 +130,7 @@ export default function Game({
           e.preventDefault();
           handleInput();
         }}
-        className="w-full h-full cursor-pointer block"
+        className="cursor-pointer block"
         style={{ touchAction: "none" }}
       />
 
