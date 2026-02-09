@@ -100,6 +100,20 @@ const MEGARALLY_ABI = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  {
+    type: "function",
+    name: "pendingWithdrawals",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
 ];
 
 const RPC_URL = process.env.RPC_URL || "https://carrot.megaeth.com/rpc";
@@ -569,6 +583,38 @@ async function autoEndTournaments() {
 // Check on startup and every 30 seconds
 autoEndTournaments();
 setInterval(autoEndTournaments, 30000);
+
+// --- Auto-withdraw operator fees ---
+async function autoWithdrawFees() {
+  try {
+    const pending = await publicClient.readContract({
+      address: MEGARALLY_ADDRESS,
+      abi: MEGARALLY_ABI,
+      functionName: "pendingWithdrawals",
+      args: [account.address],
+    });
+
+    if (pending > 0n) {
+      const ethAmount = Number(pending) / 1e18;
+      console.log(`[auto-withdraw] Claiming ${ethAmount.toFixed(6)} ETH in fees`);
+      queueTx(async () => {
+        const hash = await walletClient.writeContract({
+          address: MEGARALLY_ADDRESS,
+          abi: MEGARALLY_ABI,
+          functionName: "withdraw",
+          gas: 500000n,
+        });
+        console.log(`[auto-withdraw] Withdrawn, tx: ${hash}`);
+      });
+    }
+  } catch (err) {
+    console.error("[auto-withdraw] Error:", err.message);
+  }
+}
+
+// Check on startup and every 5 minutes
+autoWithdrawFees();
+setInterval(autoWithdrawFees, 5 * 60 * 1000);
 
 console.log(`Operator backend running on ws://localhost:${PORT}`);
 console.log(`Operator address: ${account.address}`);
