@@ -61,17 +61,37 @@ export default function WalletConnect() {
   }
 
   return (
-    <button
-      onClick={() => {
-        const connector = connectors.find((c) => c.type === "injected") ?? connectors[0];
-        if (connector) connect({ connector, chainId: megaethTestnet.id });
-      }}
-      className="px-3 py-1.5 rounded-lg text-sm font-bold text-black transition-all hover:scale-105"
-      style={{
-        background: "linear-gradient(135deg, #00f0ff, #b024ff)",
-      }}
-    >
-      Connect Wallet
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => {
+          console.log("[wallet] connectors:", connectors.map((c) => ({ name: c.name, type: c.type, uid: c.uid })));
+          console.log("[wallet] window.ethereum:", typeof window !== "undefined" && !!(window as any).ethereum);
+          const connector = connectors.find((c) => c.type === "injected") ?? connectors[0];
+          if (connector) {
+            console.log("[wallet] connecting with:", connector.name, connector.type);
+            connect(
+              { connector, chainId: megaethTestnet.id },
+              {
+                onError: (err) => console.error("[wallet] connect error:", err),
+                onSuccess: (data) => console.log("[wallet] connected:", data),
+              }
+            );
+          } else {
+            console.error("[wallet] no connectors available");
+          }
+        }}
+        className="px-3 py-1.5 rounded-lg text-sm font-bold text-black transition-all hover:scale-105"
+        style={{
+          background: "linear-gradient(135deg, #00f0ff, #b024ff)",
+        }}
+      >
+        Connect Wallet
+      </button>
+      {connectError && (
+        <span className="text-xs text-red-400 max-w-[200px] truncate" title={connectError.message}>
+          {connectError.message}
+        </span>
+      )}
+    </div>
   );
 }
