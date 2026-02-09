@@ -30,6 +30,41 @@ export const MEGARALLY_ABI = [
   },
   {
     type: "function",
+    name: "MAX_SCORE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "paused",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "pause",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "unpause",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "cancelTournament",
+    inputs: [{ name: "_tournamentId", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "createTournament",
     inputs: [
       { name: "_entryFee", type: "uint256" },
@@ -126,6 +161,7 @@ export const MEGARALLY_ABI = [
       { name: "prizePool", type: "uint256" },
       { name: "paidOut", type: "uint256" },
       { name: "ended", type: "bool" },
+      { name: "cancelled", type: "bool" },
       { name: "winner", type: "address" },
     ],
     stateMutability: "view",
@@ -215,6 +251,27 @@ export const MEGARALLY_ABI = [
       { name: "tournamentId", type: "uint256", indexed: true },
       { name: "winner", type: "address", indexed: true },
       { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "TournamentCancelled",
+    inputs: [
+      { name: "tournamentId", type: "uint256", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "Paused",
+    inputs: [
+      { name: "account", type: "address", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Unpaused",
+    inputs: [
+      { name: "account", type: "address", indexed: false },
     ],
   },
   {

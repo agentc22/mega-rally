@@ -15,6 +15,7 @@ contract MegaRallyTest is Test {
     address public operator = address(0xBEEF);
     address public alice = address(0xA11CE);
     address public bob = address(0xB0B);
+    address public random = address(0xCAFE);
 
     receive() external payable {}
 
@@ -22,6 +23,7 @@ contract MegaRallyTest is Test {
         rally = new MegaRally(operator);
         vm.deal(alice, 10 ether);
         vm.deal(bob, 10 ether);
+        vm.deal(random, 10 ether);
     }
 
     function test_createTournament() public {
@@ -56,7 +58,7 @@ contract MegaRallyTest is Test {
         assertEq(e.attemptsUsed, 0);
 
         // Prize pool should be 0.03 ETH
-        (,,,, uint256 prizePool,,,) = rally.tournaments(1);
+        (,,,, uint256 prizePool,,,,) = rally.tournaments(1);
         assertEq(prizePool, 0.03 ether);
 
         // Only 1 entry in players array
@@ -311,7 +313,7 @@ contract MegaRallyTest is Test {
         // endTournament should NOT revert even though winner rejects ETH
         rally.endTournament(1);
 
-        (,,,,,,bool ended, address winner) = rally.tournaments(1);
+        (,,,,,,bool ended,, address winner) = rally.tournaments(1);
         assertTrue(ended);
         assertEq(winner, rejAddr);
 
@@ -416,5 +418,248 @@ contract MegaRallyTest is Test {
 
         vm.expectRevert("No funds to sweep");
         rally.sweepTournament(1);
+    }
+
+    // --- New: Pause tests ---
+
+    function test_pauseBlocksEntry() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        rally.pause();
+
+        vm.prank(alice);
+        vm.expectRevert("Paused");
+        rally.enter{value: 0.01 ether}(1);
+    }
+
+    function test_pauseBlocksGameplay() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        rally.pause();
+
+        vm.startPrank(operator);
+        vm.expectRevert("Paused");
+        rally.startAttempt(1, alice);
+
+        vm.expectRevert("Paused");
+        rally.recordObstacle(1, alice, 1);
+
+        vm.expectRevert("Paused");
+        rally.recordAttemptEnd(1, alice, 10);
+        vm.stopPrank();
+    }
+
+    function test_unpauseRestoresFunction() public {
+        rally.createTournament(0.01 ether, 1 days);
+        rally.pause();
+        rally.unpause();
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1); // should work
+    }
+
+    function test_onlyOwnerCanPause() public {
+        vm.prank(alice);
+        vm.expectRevert("Not owner");
+        rally.pause();
+    }
+
+    function test_withdrawWorksWhilePaused() public {
+        // Players must always be able to withdraw their funds
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.prank(operator);
+        rally.recordAttemptEnd(1, alice, 10);
+
+        vm.warp(block.timestamp + 1 days + 1);
+        rally.endTournament(1);
+
+        rally.pause();
+
+        // Withdraw should still work even when paused
+        uint256 aliceBefore = alice.balance;
+        vm.prank(alice);
+        rally.withdraw();
+        assertGt(alice.balance, aliceBefore);
+    }
+
+    function test_endTournamentWorksWhilePaused() public {
+        // Settlement must work even when paused
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.prank(operator);
+        rally.recordAttemptEnd(1, alice, 10);
+
+        rally.pause();
+        vm.warp(block.timestamp + 1 days + 1);
+
+        rally.endTournament(1); // should work
+        (,,,,,,bool ended,,) = rally.tournaments(1);
+        assertTrue(ended);
+    }
+
+    // --- New: Cancel tournament tests ---
+
+    function test_cancelTournamentRefundsPlayers() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+        vm.prank(bob);
+        rally.enter{value: 0.01 ether}(1);
+
+        rally.cancelTournament(1);
+
+        // Both get refunds
+        assertEq(rally.pendingWithdrawals(alice), 0.01 ether);
+        assertEq(rally.pendingWithdrawals(bob), 0.01 ether);
+
+        // Tournament is ended and cancelled
+        (,,,,,,bool ended, bool cancelled,) = rally.tournaments(1);
+        assertTrue(ended);
+        assertTrue(cancelled);
+    }
+
+    function test_cancelTournamentNoPlayers() public {
+        rally.createTournament(0.01 ether, 1 days);
+        rally.cancelTournament(1); // should not revert
+
+        (,,,,,,bool ended, bool cancelled,) = rally.tournaments(1);
+        assertTrue(ended);
+        assertTrue(cancelled);
+    }
+
+    function test_cannotCancelEndedTournament() public {
+        rally.createTournament(0.01 ether, 1 days);
+        vm.warp(block.timestamp + 1 days + 1);
+        rally.endTournament(1);
+
+        vm.expectRevert("Already ended");
+        rally.cancelTournament(1);
+    }
+
+    function test_cannotCancelTwice() public {
+        rally.createTournament(0.01 ether, 1 days);
+        rally.cancelTournament(1);
+
+        vm.expectRevert("Already ended");
+        rally.cancelTournament(1);
+    }
+
+    function test_cannotEnterCancelledTournament() public {
+        rally.createTournament(0.01 ether, 1 days);
+        rally.cancelTournament(1);
+
+        vm.prank(alice);
+        vm.expectRevert("Tournament cancelled");
+        rally.enter{value: 0.01 ether}(1);
+    }
+
+    function test_cannotPlayCancelledTournament() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        rally.cancelTournament(1);
+
+        vm.prank(operator);
+        vm.expectRevert("Tournament ended");
+        rally.startAttempt(1, alice);
+    }
+
+    function test_cannotEndCancelledTournament() public {
+        rally.createTournament(0.01 ether, 1 days);
+        rally.cancelTournament(1);
+
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.expectRevert("Already ended");
+        rally.endTournament(1);
+    }
+
+    function test_onlyOwnerCanCancel() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        vm.expectRevert("Not owner");
+        rally.cancelTournament(1);
+    }
+
+    // --- New: Score cap tests ---
+
+    function test_scoreCapEnforced() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.prank(operator);
+        vm.expectRevert("Score exceeds maximum");
+        rally.recordAttemptEnd(1, alice, 10001);
+    }
+
+    function test_maxScoreAllowed() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.prank(operator);
+        rally.recordAttemptEnd(1, alice, 10000); // exactly MAX_SCORE should work
+
+        MegaRally.Entry memory e = rally.getEntry(1, alice);
+        assertEq(e.bestScore, 10000);
+    }
+
+    // --- New: Permissionless endTournament tests ---
+
+    function test_anyoneCanEndTournament() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.prank(operator);
+        rally.recordAttemptEnd(1, alice, 50);
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Random address can end it
+        vm.prank(random);
+        rally.endTournament(1);
+
+        (,,,,,,bool ended,,address winner) = rally.tournaments(1);
+        assertTrue(ended);
+        assertEq(winner, alice);
+    }
+
+    function test_playerCanEndAndWithdraw() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.prank(operator);
+        rally.recordAttemptEnd(1, alice, 50);
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // Alice ends it herself and withdraws
+        vm.startPrank(alice);
+        rally.endTournament(1);
+
+        uint256 balBefore = alice.balance;
+        rally.withdraw();
+        assertGt(alice.balance, balBefore);
+        vm.stopPrank();
     }
 }

@@ -82,6 +82,7 @@ const MEGARALLY_ABI = [
       { name: "prizePool", type: "uint256" },
       { name: "paidOut", type: "uint256" },
       { name: "ended", type: "bool" },
+      { name: "cancelled", type: "bool" },
       { name: "winner", type: "address" },
     ],
     stateMutability: "view",

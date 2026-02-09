@@ -18,6 +18,7 @@ export interface TournamentHistoryEntry {
   endTime: bigint;
   prizePool: bigint;
   ended: boolean;
+  cancelled: boolean;
   winner: string;
   // Player's entry data
   scores: number[];
@@ -82,7 +83,8 @@ export function usePlayerHistory(address: string | undefined) {
           endTime: tournament[3],
           prizePool: tournament[4],
           ended: tournament[6],
-          winner: tournament[7],
+          cancelled: tournament[7],
+          winner: tournament[8],
           scores: entry.scores.map((s) => Number(s)),
           attemptsUsed: Number(entry.attemptsUsed),
           tickets: Number(entry.tickets),
