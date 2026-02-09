@@ -86,6 +86,20 @@ const MEGARALLY_ABI = [
     ],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "tournamentCount",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "endTournament",
+    inputs: [{ name: "_tournamentId", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
 ];
 
 const RPC_URL = process.env.RPC_URL || "https://carrot.megaeth.com/rpc";
@@ -510,6 +524,51 @@ async function checkOperatorBalance() {
 // Check on startup and every 5 minutes
 checkOperatorBalance();
 setInterval(checkOperatorBalance, 5 * 60 * 1000);
+
+// --- Auto-end expired tournaments ---
+async function autoEndTournaments() {
+  try {
+    const count = await publicClient.readContract({
+      address: MEGARALLY_ADDRESS,
+      abi: MEGARALLY_ABI,
+      functionName: "tournamentCount",
+    });
+
+    const now = BigInt(Math.floor(Date.now() / 1000));
+
+    for (let i = 1; i <= Number(count); i++) {
+      const t = await publicClient.readContract({
+        address: MEGARALLY_ADDRESS,
+        abi: MEGARALLY_ABI,
+        functionName: "tournaments",
+        args: [BigInt(i)],
+      });
+
+      const ended = t[6];
+      const endTime = t[3];
+
+      if (!ended && now >= endTime) {
+        console.log(`[auto-end] Ending tournament #${i} (expired at ${endTime})`);
+        queueTx(async () => {
+          const hash = await walletClient.writeContract({
+            address: MEGARALLY_ADDRESS,
+            abi: MEGARALLY_ABI,
+            functionName: "endTournament",
+            args: [BigInt(i)],
+            gas: 500000n,
+          });
+          console.log(`[auto-end] Tournament #${i} ended, tx: ${hash}`);
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[auto-end] Error:", err.message);
+  }
+}
+
+// Check on startup and every 30 seconds
+autoEndTournaments();
+setInterval(autoEndTournaments, 30000);
 
 console.log(`Operator backend running on ws://localhost:${PORT}`);
 console.log(`Operator address: ${account.address}`);
