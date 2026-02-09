@@ -4,6 +4,11 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "../src/MegaRally.sol";
 
+contract RejectETH {
+    // Contract that rejects ETH — used to test pull-payment
+    fallback() external { revert("no ETH"); }
+}
+
 contract MegaRallyTest is Test {
     MegaRally public rally;
     address public owner = address(this);
@@ -157,13 +162,13 @@ contract MegaRallyTest is Test {
         vm.prank(bob);
         rally.enter{value: 0.01 ether}(1);
 
-        // Alice: total 10
+        // Alice: best score 4
         vm.startPrank(operator);
         rally.recordAttemptEnd(1, alice, 3);
         rally.recordAttemptEnd(1, alice, 4);
         rally.recordAttemptEnd(1, alice, 3);
 
-        // Bob: total 15
+        // Bob: best score 5
         rally.recordAttemptEnd(1, bob, 5);
         rally.recordAttemptEnd(1, bob, 5);
         rally.recordAttemptEnd(1, bob, 5);
@@ -172,13 +177,20 @@ contract MegaRallyTest is Test {
         // Warp past end time
         vm.warp(block.timestamp + 1 days + 1);
 
-        uint256 bobBalBefore = bob.balance;
-        uint256 ownerBalBefore = owner.balance;
-
         rally.endTournament(1);
 
-        // Prize pool = 0.02 ETH, fee = 2% = 0.0004, prize = 0.0196
+        // Pull-payment: funds credited, not sent yet
+        assertEq(rally.pendingWithdrawals(bob), 0.0196 ether);
+        assertEq(rally.pendingWithdrawals(owner), 0.0004 ether);
+
+        // Withdraw
+        uint256 bobBalBefore = bob.balance;
+        vm.prank(bob);
+        rally.withdraw();
         assertEq(bob.balance - bobBalBefore, 0.0196 ether);
+
+        uint256 ownerBalBefore = owner.balance;
+        rally.withdraw(); // owner is address(this)
         assertEq(owner.balance - ownerBalBefore, 0.0004 ether);
     }
 
@@ -196,11 +208,11 @@ contract MegaRallyTest is Test {
         rally.enter{value: 0.01 ether}(1);
 
         vm.startPrank(operator);
-        // Alice uses 6 attempts, total = 60
+        // Alice: best score = 10
         for (uint256 i = 0; i < 6; i++) {
             rally.recordAttemptEnd(1, alice, 10);
         }
-        // Bob uses 3 attempts, total = 15
+        // Bob: best score = 5
         rally.recordAttemptEnd(1, bob, 5);
         rally.recordAttemptEnd(1, bob, 5);
         rally.recordAttemptEnd(1, bob, 5);
@@ -208,12 +220,17 @@ contract MegaRallyTest is Test {
 
         vm.warp(block.timestamp + 1 days + 1);
 
-        uint256 aliceBalBefore = alice.balance;
         rally.endTournament(1);
 
-        // Prize pool = 0.03 ETH, alice wins with 60 > 15
+        // Prize pool = 0.03 ETH, alice wins with bestScore 10 > 5
         uint256 fee = (0.03 ether * 200) / 10000;
         uint256 prize = 0.03 ether - fee;
+        assertEq(rally.pendingWithdrawals(alice), prize);
+
+        // Withdraw
+        uint256 aliceBalBefore = alice.balance;
+        vm.prank(alice);
+        rally.withdraw();
         assertEq(alice.balance - aliceBalBefore, prize);
     }
 
@@ -267,5 +284,137 @@ contract MegaRallyTest is Test {
         vm.prank(alice);
         vm.expectRevert("Not owner");
         rally.createTournament(0.01 ether, 1 days);
+    }
+
+    // --- Audit-required tests ---
+
+    function test_winnerRejectsETH_pullPayment() public {
+        // HIGH: Winner is a contract that rejects ETH — endTournament must still succeed
+        RejectETH rejector = new RejectETH();
+        address rejAddr = address(rejector);
+        vm.deal(rejAddr, 10 ether);
+
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(rejAddr);
+        rally.enter{value: 0.01 ether}(1);
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.startPrank(operator);
+        rally.recordAttemptEnd(1, rejAddr, 100); // highest score
+        rally.recordAttemptEnd(1, alice, 10);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        // endTournament should NOT revert even though winner rejects ETH
+        rally.endTournament(1);
+
+        (,,,,,,bool ended, address winner) = rally.tournaments(1);
+        assertTrue(ended);
+        assertEq(winner, rejAddr);
+
+        // Prize is pending, not transferred
+        uint256 prize = 0.02 ether - (0.02 ether * 200) / 10000;
+        assertEq(rally.pendingWithdrawals(rejAddr), prize);
+    }
+
+    function test_cannotStartAttemptAfterExpiry() public {
+        // HIGH: Gameplay functions must enforce endTime
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        // Warp past endTime but don't call endTournament
+        vm.warp(block.timestamp + 1 days + 1);
+
+        vm.prank(operator);
+        vm.expectRevert("Tournament expired");
+        rally.startAttempt(1, alice);
+    }
+
+    function test_recordAttemptEndAfterExpiryStillWorks() public {
+        // recordAttemptEnd doesn't check endTime (game started before expiry)
+        rally.createTournament(0.01 ether, 1 hours);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.prank(operator);
+        rally.startAttempt(1, alice); // started before expiry
+
+        // Warp past endTime — score submission should still work
+        // (attempt was started in time, just finished after)
+        vm.warp(block.timestamp + 1 hours + 1);
+
+        vm.prank(operator);
+        rally.recordAttemptEnd(1, alice, 50); // should succeed
+
+        MegaRally.Entry memory e = rally.getEntry(1, alice);
+        assertEq(e.attemptsUsed, 1);
+        assertEq(e.bestScore, 50);
+    }
+
+    function test_refundPathWithPullPayment() public {
+        // MEDIUM: Refunds use pull-payment so reverting addresses don't block others
+        RejectETH rejector = new RejectETH();
+        address rejAddr = address(rejector);
+        vm.deal(rejAddr, 10 ether);
+
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(rejAddr);
+        rally.enter{value: 0.01 ether}(1);
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        // No one scores — refund path
+        vm.warp(block.timestamp + 1 days + 1);
+        rally.endTournament(1);
+
+        // Both should have pending refunds
+        assertEq(rally.pendingWithdrawals(rejAddr), 0.01 ether);
+        assertEq(rally.pendingWithdrawals(alice), 0.01 ether);
+
+        // Alice can withdraw fine
+        uint256 aliceBefore = alice.balance;
+        vm.prank(alice);
+        rally.withdraw();
+        assertEq(alice.balance - aliceBefore, 0.01 ether);
+    }
+
+    function test_withdrawNothingReverts() public {
+        vm.prank(alice);
+        vm.expectRevert("Nothing to withdraw");
+        rally.withdraw();
+    }
+
+    function test_sweepAfterPullPayment() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.prank(alice);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.startPrank(operator);
+        rally.recordAttemptEnd(1, alice, 10);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 days + 1);
+        rally.endTournament(1);
+
+        // Alice withdraws her prize
+        vm.prank(alice);
+        rally.withdraw();
+
+        // Owner withdraws fee
+        rally.withdraw();
+
+        // Sweep after 7 days — should have nothing
+        vm.warp(block.timestamp + 7 days + 1);
+
+        vm.expectRevert("No funds to sweep");
+        rally.sweepTournament(1);
     }
 }

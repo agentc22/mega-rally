@@ -12,7 +12,7 @@ import { WebSocketServer } from "ws";
 import crypto from "crypto";
 
 const MEGARALLY_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0xEF8481DAEb6e2bD8623eB414fb33f37d44DC54d7";
+  process.env.CONTRACT_ADDRESS || "0x6E3b0923c176cfAa3A534b7610534Aca12084f3B";
 
 const MEGARALLY_ABI = [
   {
@@ -138,10 +138,16 @@ const rateLimits = new Map();
 const RATE_LIMIT_WINDOW_MS = 1000;
 const RATE_LIMIT_MAX_ACTIONS = 10;
 
-// TX queue to prevent nonce conflicts
+// TX queue to prevent nonce conflicts (with timeout to prevent deadlock)
+const TX_TIMEOUT_MS = 30000;
 let txQueue = Promise.resolve();
 function queueTx(fn) {
-  txQueue = txQueue.then(fn).catch((err) => {
+  txQueue = txQueue.then(() => {
+    return Promise.race([
+      fn(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("TX timeout")), TX_TIMEOUT_MS)),
+    ]);
+  }).catch((err) => {
     console.error("TX failed:", err.message);
   });
   return txQueue;
@@ -176,9 +182,36 @@ function computeScore(obstacleCount, elapsedMs) {
 }
 
 const PORT = process.env.PORT || 8080;
-const wss = new WebSocketServer({ port: PORT });
+const MAX_CONNECTIONS = 200;
+const MAX_CONNECTIONS_PER_IP = 5;
+const ipConnections = new Map();
 
-wss.on("connection", (ws) => {
+const wss = new WebSocketServer({
+  port: PORT,
+  maxPayload: 1024, // 1KB max message size
+});
+
+wss.on("connection", (ws, req) => {
+  // Enforce global connection limit
+  if (wss.clients.size > MAX_CONNECTIONS) {
+    ws.close(1013, "Server full");
+    return;
+  }
+
+  // Per-IP connection limit
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.socket.remoteAddress;
+  const ipCount = ipConnections.get(ip) || 0;
+  if (ipCount >= MAX_CONNECTIONS_PER_IP) {
+    ws.close(1013, "Too many connections");
+    return;
+  }
+  ipConnections.set(ip, ipCount + 1);
+  ws.on("close", () => {
+    const c = ipConnections.get(ip) || 1;
+    if (c <= 1) ipConnections.delete(ip);
+    else ipConnections.set(ip, c - 1);
+  });
+
   console.log("Client connected");
 
   // Send auth challenge

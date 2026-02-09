@@ -40,6 +40,7 @@ contract MegaRally {
     mapping(uint256 => Tournament) public tournaments;
     mapping(uint256 => mapping(address => Entry)) public entries;
     mapping(uint256 => address[]) public tournamentPlayers;
+    mapping(address => uint256) public pendingWithdrawals;
 
     // Events
     event TournamentCreated(uint256 indexed tournamentId, uint256 entryFee, uint256 endTime);
@@ -49,6 +50,9 @@ contract MegaRally {
     event AttemptEnded(uint256 indexed tournamentId, address indexed player, uint8 attemptNumber, uint256 score);
     event TournamentEnded(uint256 indexed tournamentId, address indexed winner, uint256 prize);
     event TicketPurchased(uint256 indexed tournamentId, address indexed player, uint8 ticketNumber);
+    event PrizePending(uint256 indexed tournamentId, address indexed winner, uint256 amount);
+    event RefundPending(uint256 indexed tournamentId, address indexed player, uint256 amount);
+    event Withdrawn(address indexed to, uint256 amount);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
@@ -146,6 +150,7 @@ contract MegaRally {
     function startAttempt(uint256 _tournamentId, address _player) external onlyOperator {
         Tournament storage t = tournaments[_tournamentId];
         require(!t.ended, "Tournament ended");
+        require(block.timestamp < t.endTime, "Tournament expired");
         Entry storage e = entries[_tournamentId][_player];
         require(e.player != address(0), "Not entered");
         require(e.attemptsUsed < e.tickets * uint8(ATTEMPTS_PER_TICKET), "No attempts left");
@@ -204,28 +209,40 @@ contract MegaRally {
         t.winner = winner;
 
         if (winner != address(0) && highestScore > 0 && t.prizePool > 0) {
-            // Normal payout: winner gets 98%, owner gets 2%
+            // Pull-payment: credit winner and owner, they withdraw later
             uint256 fee = (t.prizePool * FEE_BPS) / 10000;
             uint256 prize = t.prizePool - fee;
             t.paidOut = t.prizePool;
 
-            (bool s1,) = payable(winner).call{value: prize}("");
-            require(s1, "Prize transfer failed");
-            (bool s2,) = payable(owner).call{value: fee}("");
-            require(s2, "Fee transfer failed");
+            pendingWithdrawals[winner] += prize;
+            pendingWithdrawals[owner] += fee;
 
+            emit PrizePending(_tournamentId, winner, prize);
             emit TournamentEnded(_tournamentId, winner, prize);
         } else if (players.length > 0 && t.prizePool > 0) {
-            // No valid winner — refund all players
+            // No valid winner — credit refunds to all players
             uint256 refundPerPlayer = t.prizePool / players.length;
-            uint256 totalRefunded = 0;
+            uint256 totalCredited = 0;
             for (uint256 i = 0; i < players.length; i++) {
-                (bool ok,) = payable(players[i]).call{value: refundPerPlayer}("");
-                if (ok) totalRefunded += refundPerPlayer;
+                pendingWithdrawals[players[i]] += refundPerPlayer;
+                totalCredited += refundPerPlayer;
+                emit RefundPending(_tournamentId, players[i], refundPerPlayer);
             }
-            t.paidOut = totalRefunded;
+            t.paidOut = totalCredited;
             emit TournamentEnded(_tournamentId, address(0), 0);
         }
+    }
+
+    function withdraw() external nonReentrant {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount > 0, "Nothing to withdraw");
+
+        pendingWithdrawals[msg.sender] = 0;
+
+        (bool ok,) = payable(msg.sender).call{value: amount}("");
+        require(ok, "Withdraw failed");
+
+        emit Withdrawn(msg.sender, amount);
     }
 
     // Recover residual dust from a specific tournament (not entire contract balance)

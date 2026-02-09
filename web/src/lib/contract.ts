@@ -1,5 +1,5 @@
 export const MEGARALLY_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0xEF8481DAEb6e2bD8623eB414fb33f37d44DC54d7") as `0x${string}`;
+  "0x6E3b0923c176cfAa3A534b7610534Aca12084f3B") as `0x${string}`;
 
 export const MEGARALLY_ABI = [
   {
@@ -186,12 +186,43 @@ export const MEGARALLY_ABI = [
     ],
   },
   {
+    type: "function",
+    name: "withdraw",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "pendingWithdrawals",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
     type: "event",
     name: "TournamentEnded",
     inputs: [
       { name: "tournamentId", type: "uint256", indexed: true },
       { name: "winner", type: "address", indexed: true },
       { name: "prize", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "PrizePending",
+    inputs: [
+      { name: "tournamentId", type: "uint256", indexed: true },
+      { name: "winner", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "Withdrawn",
+    inputs: [
+      { name: "to", type: "address", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
     ],
   },
 ] as const;

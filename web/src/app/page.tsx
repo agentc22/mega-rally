@@ -559,7 +559,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
             <div className="flex items-center gap-4">
               <a
-                href="https://testnet.megaethscan.io/address/0xEF8481DAEb6e2bD8623eB414fb33f37d44DC54d7"
+                href="https://testnet.megaethscan.io/address/0x6E3b0923c176cfAa3A534b7610534Aca12084f3B"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-mono hover:text-cyan-400 transition-colors"
