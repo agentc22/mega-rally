@@ -12,7 +12,7 @@ import { WebSocketServer } from "ws";
 import crypto from "crypto";
 
 const MEGARALLY_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0x6d32B9c3d539b2066b2b44915e09CDe94673bA5b";
+  process.env.CONTRACT_ADDRESS || "0x0701384d628A98d248ed8c06f3663D45BB22a013";
 
 const MEGARALLY_ABI = [
   {
