@@ -1,5 +1,5 @@
 export const MEGARALLY_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x0701384d628A98d248ed8c06f3663D45BB22a013") as `0x${string}`;
+  "0x3F296580DDC77c21D8d6B43B92C7aE8f021A9F8e") as `0x${string}`;
 
 export const MEGARALLY_ABI = [
   {
