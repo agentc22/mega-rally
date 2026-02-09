@@ -9,14 +9,18 @@ export function useOperator() {
   const { address } = useAccount();
   const { signMessageAsync } = useSignMessage();
 
+  // Keep signMessageAsync in a ref so it doesn't cause reconnects
+  const signRef = useRef(signMessageAsync);
+  signRef.current = signMessageAsync;
+
   useEffect(() => {
     const client = new OperatorClient(
-      process.env.NEXT_PUBLIC_OPERATOR_URL || "ws://localhost:8080"
+      process.env.NEXT_PUBLIC_OPERATOR_URL || "wss://operator-production-4127.up.railway.app"
     );
 
     // Set auth credentials if wallet is connected
     if (address) {
-      client.setAuth(address, signMessageAsync);
+      client.setAuth(address, (args) => signRef.current(args));
     }
 
     client.connect();
@@ -25,7 +29,7 @@ export function useOperator() {
     return () => {
       client.disconnect();
     };
-  }, [address, signMessageAsync]);
+  }, [address]);
 
   const startAttempt = useCallback(
     (tournamentId: number) => {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
+import Link from "next/link";
 import { megaethTestnet } from "@/lib/chains";
 
 export default function WalletConnect() {
@@ -29,9 +30,13 @@ export default function WalletConnect() {
             Switch to MegaETH
           </button>
         )}
-        <span className="text-xs text-cyan-400 font-mono">
+        <Link
+          href={`/profile/${address}`}
+          className="text-xs text-cyan-400 font-mono hover:text-cyan-300 transition-colors"
+          title="View profile"
+        >
           {address.slice(0, 6)}...{address.slice(-4)}
-        </span>
+        </Link>
         <button
           onClick={() => disconnect()}
           className="text-xs px-2 py-1 rounded border border-pink-500/40 text-pink-400 hover:bg-pink-500/10 transition-colors"

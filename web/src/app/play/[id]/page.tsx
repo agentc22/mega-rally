@@ -32,6 +32,7 @@ export default function PlayPage() {
   const contractAttemptsUsed = entry ? Number(entry.attemptsUsed) : 0;
   const tickets = entry ? Number(entry.tickets) : 1;
   const maxAttempts = tickets * ATTEMPTS_PER_TICKET;
+  const currentTicket = Math.floor(currentAttempt / ATTEMPTS_PER_TICKET) + 1;
 
   // Sync from contract
   const syncedRef = useRef(false);
@@ -118,6 +119,8 @@ export default function PlayPage() {
           currentAttempt={currentAttempt}
           maxAttempts={maxAttempts}
           totalScore={totalScore}
+          currentTicket={currentTicket}
+          ticketCount={tickets}
         />
       </div>
 
@@ -146,13 +149,45 @@ export default function PlayPage() {
             >
               ALL ATTEMPTS USED
             </h3>
-            <div className="flex justify-center gap-6 mb-3">
-              {scores.map((s, i) => (
-                <div key={i} className="text-center">
-                  <div className="text-xs text-gray-500">Run {i + 1}</div>
-                  <div className="text-lg font-bold text-cyan-400">{s}</div>
-                </div>
-              ))}
+            <div className="flex justify-center gap-4 mb-3 flex-wrap">
+              {Array.from({ length: tickets }).map((_, t) => {
+                const ticketScores = scores.slice(
+                  t * ATTEMPTS_PER_TICKET,
+                  (t + 1) * ATTEMPTS_PER_TICKET
+                );
+                const ticketTotal =
+                  ticketScores.reduce((a, b) => a + b, 0);
+                return (
+                  <div
+                    key={t}
+                    className="rounded-lg p-3 border border-white/10 bg-white/[0.03]"
+                  >
+                    {tickets > 1 && (
+                      <div className="text-[10px] font-bold text-purple-400 mb-1">
+                        TICKET {t + 1}
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      {ticketScores.map((s, a) => (
+                        <div key={a} className="text-center">
+                          <div className="text-xs text-gray-500">
+                            Run {a + 1}
+                          </div>
+                          <div className="text-lg font-bold text-cyan-400">
+                            {s}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      className="text-sm font-bold mt-1 tabular-nums"
+                      style={{ color: "#ffe814" }}
+                    >
+                      Total: {ticketTotal}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <div
               className="text-2xl font-bold"

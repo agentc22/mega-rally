@@ -11,13 +11,16 @@ export class OperatorClient {
   private address: string | null = null;
   private signMessage: SignMessageFn | null = null;
 
+  // Queue messages until authenticated
+  private pendingMessages: Record<string, unknown>[] = [];
+
   // Exponential backoff state
   private reconnectAttempts = 0;
   private readonly maxReconnectDelay = 30000;
   private readonly baseReconnectDelay = 1000;
   private readonly maxReconnectAttempts = 20;
 
-  constructor(url: string = "ws://localhost:8080") {
+  constructor(url: string = "wss://operator-production-4127.up.railway.app") {
     this.url = url;
   }
 
@@ -34,7 +37,7 @@ export class OperatorClient {
     this.ws.onopen = () => {
       console.log("[operator] connected");
       this.connected = true;
-      this.reconnectAttempts = 0; // Reset backoff on successful connect
+      this.reconnectAttempts = 0;
     };
 
     this.ws.onmessage = (event) => {
@@ -50,6 +53,8 @@ export class OperatorClient {
         if (msg.type === "AUTH_OK") {
           this.authenticated = true;
           console.log("[operator] authenticated");
+          // Flush any queued messages
+          this.flushPending();
         }
 
         if (msg.type === "AUTH_FAILED") {
@@ -104,9 +109,17 @@ export class OperatorClient {
     try {
       const message = `MegaRally auth: ${nonce}`;
       const signature = await this.signMessage({ message });
-      this.send({ type: "AUTH", address: this.address, signature });
+      this.rawSend({ type: "AUTH", address: this.address, signature });
     } catch (err) {
       console.error("[operator] failed to sign auth:", err);
+    }
+  }
+
+  private flushPending() {
+    const queued = this.pendingMessages.splice(0);
+    for (const msg of queued) {
+      console.log("[operator] flushing queued message:", msg.type);
+      this.rawSend(msg);
     }
   }
 
@@ -114,11 +127,12 @@ export class OperatorClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }
-    this.reconnectAttempts = this.maxReconnectAttempts; // Prevent reconnect
+    this.reconnectAttempts = this.maxReconnectAttempts;
     this.ws?.close();
     this.ws = null;
     this.connected = false;
     this.authenticated = false;
+    this.pendingMessages = [];
   }
 
   on(type: string, handler: MessageHandler) {
@@ -136,15 +150,29 @@ export class OperatorClient {
     }
   }
 
-  send(msg: Record<string, unknown>) {
+  // Low-level send — just checks WS is open
+  private rawSend(msg: Record<string, unknown>) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     } else {
-      console.warn("[operator] not connected, message dropped");
+      console.warn("[operator] ws not open, message dropped:", msg.type);
+    }
+  }
+
+  // Game message send — queues if not authenticated yet
+  send(msg: Record<string, unknown>) {
+    if (this.authenticated && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    } else if (this.ws && !this.authenticated) {
+      console.log("[operator] not yet authenticated, queuing:", msg.type);
+      this.pendingMessages.push(msg);
+    } else {
+      console.warn("[operator] not connected, message dropped:", msg.type);
     }
   }
 
   startAttempt(tournamentId: number) {
+    console.log("[operator] startAttempt called, tournament:", tournamentId, "authenticated:", this.authenticated, "connected:", this.connected);
     this.send({ type: "START_ATTEMPT", tournamentId });
   }
 
@@ -153,7 +181,6 @@ export class OperatorClient {
   }
 
   crash() {
-    // No score sent — server computes it
     this.send({ type: "CRASH" });
   }
 

@@ -10,6 +10,7 @@ interface TournamentCardProps {
   ticketCount: number;
   ended: boolean;
   isEntered: boolean;
+  hasAttemptsLeft: boolean;
   onEnter: () => void;
   onPlay: () => void;
   entering: boolean;
@@ -23,6 +24,7 @@ export default function TournamentCard({
   ticketCount,
   ended,
   isEntered,
+  hasAttemptsLeft,
   onEnter,
   onPlay,
   entering,
@@ -112,7 +114,7 @@ export default function TournamentCard({
         </button>
       )}
 
-      {isActive && isEntered && (
+      {isActive && isEntered && hasAttemptsLeft && (
         <button
           onClick={onPlay}
           className="w-full py-2 rounded-lg font-bold text-black transition-all hover:scale-[1.02]"
@@ -121,6 +123,19 @@ export default function TournamentCard({
           }}
         >
           PLAY
+        </button>
+      )}
+
+      {isActive && isEntered && !hasAttemptsLeft && (
+        <button
+          onClick={onEnter}
+          disabled={entering}
+          className="w-full py-2 rounded-lg font-bold text-black transition-all hover:scale-[1.02] disabled:opacity-50"
+          style={{
+            background: "linear-gradient(135deg, #b024ff, #ff2d95)",
+          }}
+        >
+          {entering ? "PURCHASING..." : `BUY ANOTHER TICKET (${formatEther(entryFee)} ETH)`}
         </button>
       )}
     </div>
