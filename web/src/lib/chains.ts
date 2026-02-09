@@ -9,7 +9,11 @@ export const megaethTestnet = defineChain({
     symbol: "ETH",
   },
   rpcUrls: {
-    default: { http: ["https://carrot.megaeth.com/rpc"] },
+    default: {
+      http: [
+        process.env.NEXT_PUBLIC_RPC_URL || "https://carrot.megaeth.com/rpc",
+      ],
+    },
   },
   blockExplorers: {
     default: {

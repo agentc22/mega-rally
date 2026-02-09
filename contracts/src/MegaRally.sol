@@ -5,6 +5,7 @@ contract MegaRally {
     // Constants
     uint256 public constant FEE_BPS = 200; // 2%
     uint256 public constant MAX_ATTEMPTS = 3;
+    uint256 public constant MAX_PLAYERS = 256;
 
     // Structs
     struct Tournament {
@@ -13,6 +14,7 @@ contract MegaRally {
         uint256 startTime;
         uint256 endTime;
         uint256 prizePool;
+        uint256 paidOut;
         bool ended;
         address winner;
     }
@@ -27,8 +29,10 @@ contract MegaRally {
 
     // State
     address public owner;
+    address public pendingOwner;
     address public operator;
     uint256 public tournamentCount;
+    bool private _locked;
 
     mapping(uint256 => Tournament) public tournaments;
     mapping(uint256 => mapping(address => Entry)) public entries;
@@ -41,8 +45,11 @@ contract MegaRally {
     event ObstaclePassed(uint256 indexed tournamentId, address indexed player, uint8 attemptNumber, uint256 obstacleId);
     event AttemptEnded(uint256 indexed tournamentId, address indexed player, uint8 attemptNumber, uint256 score);
     event TournamentEnded(uint256 indexed tournamentId, address indexed winner, uint256 prize);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     constructor(address _operator) {
+        require(_operator != address(0), "Zero operator");
         owner = msg.sender;
         operator = _operator;
     }
@@ -57,6 +64,35 @@ contract MegaRally {
         _;
     }
 
+    modifier nonReentrant() {
+        require(!_locked, "Reentrant call");
+        _locked = true;
+        _;
+        _locked = false;
+    }
+
+    // --- Ownership ---
+
+    function transferOwnership(address _newOwner) external onlyOwner {
+        require(_newOwner != address(0), "Zero address");
+        pendingOwner = _newOwner;
+        emit OwnershipTransferStarted(owner, _newOwner);
+    }
+
+    function acceptOwnership() external {
+        require(msg.sender == pendingOwner, "Not pending owner");
+        emit OwnershipTransferred(owner, pendingOwner);
+        owner = pendingOwner;
+        pendingOwner = address(0);
+    }
+
+    function setOperator(address _operator) external onlyOwner {
+        require(_operator != address(0), "Zero operator");
+        operator = _operator;
+    }
+
+    // --- Tournament lifecycle ---
+
     function createTournament(uint256 _entryFee, uint256 _duration) external onlyOwner returns (uint256) {
         tournamentCount++;
         tournaments[tournamentCount] = Tournament({
@@ -65,6 +101,7 @@ contract MegaRally {
             startTime: block.timestamp,
             endTime: block.timestamp + _duration,
             prizePool: 0,
+            paidOut: 0,
             ended: false,
             winner: address(0)
         });
@@ -78,6 +115,7 @@ contract MegaRally {
         require(block.timestamp < t.endTime, "Tournament ended");
         require(msg.value == t.entryFee, "Wrong entry fee");
         require(entries[_tournamentId][msg.sender].player == address(0), "Already entered");
+        require(tournamentPlayers[_tournamentId].length < MAX_PLAYERS, "Tournament full");
 
         entries[_tournamentId][msg.sender] = Entry({
             player: msg.sender,
@@ -93,7 +131,11 @@ contract MegaRally {
         emit PlayerEntered(_tournamentId, msg.sender);
     }
 
+    // --- Gameplay (operator only) ---
+
     function startAttempt(uint256 _tournamentId, address _player) external onlyOperator {
+        Tournament storage t = tournaments[_tournamentId];
+        require(!t.ended, "Tournament ended");
         Entry storage e = entries[_tournamentId][_player];
         require(e.player != address(0), "Not entered");
         require(e.attemptsUsed < MAX_ATTEMPTS, "No attempts left");
@@ -102,6 +144,8 @@ contract MegaRally {
     }
 
     function recordObstacle(uint256 _tournamentId, address _player, uint256 _obstacleId) external onlyOperator {
+        Tournament storage t = tournaments[_tournamentId];
+        require(!t.ended, "Tournament ended");
         Entry storage e = entries[_tournamentId][_player];
         require(e.player != address(0), "Not entered");
 
@@ -109,6 +153,8 @@ contract MegaRally {
     }
 
     function recordAttemptEnd(uint256 _tournamentId, address _player, uint256 _score) external onlyOperator {
+        Tournament storage t = tournaments[_tournamentId];
+        require(!t.ended, "Tournament ended");
         Entry storage e = entries[_tournamentId][_player];
         require(e.player != address(0), "Not entered");
         require(e.attemptsUsed < MAX_ATTEMPTS, "No attempts left");
@@ -120,7 +166,9 @@ contract MegaRally {
         emit AttemptEnded(_tournamentId, _player, e.attemptsUsed, _score);
     }
 
-    function endTournament(uint256 _tournamentId) external onlyOwner {
+    // --- Finalization ---
+
+    function endTournament(uint256 _tournamentId) external onlyOwner nonReentrant {
         Tournament storage t = tournaments[_tournamentId];
         require(t.id != 0, "Tournament doesn't exist");
         require(block.timestamp >= t.endTime, "Tournament not ended");
@@ -130,6 +178,7 @@ contract MegaRally {
         uint256 highestScore;
         address[] memory players = tournamentPlayers[_tournamentId];
 
+        // Bounded by MAX_PLAYERS (256) — safe from gas limit
         for (uint256 i = 0; i < players.length; i++) {
             Entry storage e = entries[_tournamentId][players[i]];
             if (e.totalScore > highestScore) {
@@ -141,9 +190,11 @@ contract MegaRally {
         t.ended = true;
         t.winner = winner;
 
-        if (winner != address(0) && t.prizePool > 0) {
+        if (winner != address(0) && highestScore > 0 && t.prizePool > 0) {
+            // Normal payout: winner gets 98%, owner gets 2%
             uint256 fee = (t.prizePool * FEE_BPS) / 10000;
             uint256 prize = t.prizePool - fee;
+            t.paidOut = t.prizePool;
 
             (bool s1,) = payable(winner).call{value: prize}("");
             require(s1, "Prize transfer failed");
@@ -151,10 +202,37 @@ contract MegaRally {
             require(s2, "Fee transfer failed");
 
             emit TournamentEnded(_tournamentId, winner, prize);
+        } else if (players.length > 0 && t.prizePool > 0) {
+            // No valid winner — refund all players
+            uint256 refundPerPlayer = t.prizePool / players.length;
+            uint256 totalRefunded = 0;
+            for (uint256 i = 0; i < players.length; i++) {
+                (bool ok,) = payable(players[i]).call{value: refundPerPlayer}("");
+                if (ok) totalRefunded += refundPerPlayer;
+            }
+            t.paidOut = totalRefunded;
+            emit TournamentEnded(_tournamentId, address(0), 0);
         }
     }
 
-    // View functions
+    // Recover residual dust from a specific tournament (not entire contract balance)
+    function sweepTournament(uint256 _tournamentId) external onlyOwner nonReentrant {
+        Tournament storage t = tournaments[_tournamentId];
+        require(t.id != 0, "Tournament doesn't exist");
+        require(block.timestamp >= t.endTime + 7 days, "Too early to sweep");
+        require(t.ended, "End tournament first");
+
+        uint256 residual = t.prizePool - t.paidOut;
+        require(residual > 0, "No funds to sweep");
+
+        t.paidOut = t.prizePool; // Mark fully paid
+
+        (bool ok,) = payable(owner).call{value: residual}("");
+        require(ok, "Sweep failed");
+    }
+
+    // --- View functions ---
+
     function getEntry(uint256 _tournamentId, address _player) external view returns (Entry memory) {
         return entries[_tournamentId][_player];
     }
@@ -172,10 +250,5 @@ contract MegaRally {
         }
 
         return (players, scores);
-    }
-
-    // Allow operator update
-    function setOperator(address _operator) external onlyOwner {
-        operator = _operator;
     }
 }

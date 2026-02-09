@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG CACHE_BUST=1
 RUN npm run build
 
 FROM node:20-slim AS runner

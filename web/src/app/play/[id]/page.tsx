@@ -55,14 +55,14 @@ export default function PlayPage() {
 
   const handleStart = useCallback(() => {
     if (address) {
-      startAttempt(tournamentId, address);
+      startAttempt(tournamentId);
     }
   }, [address, tournamentId, startAttempt]);
 
   const handleObstaclePassed = useCallback(
     (obstacleId: number) => {
       if (address) {
-        obstaclePassed(address, obstacleId);
+        obstaclePassed(obstacleId);
       }
     },
     [address, obstaclePassed]
@@ -71,7 +71,7 @@ export default function PlayPage() {
   const handleGameOver = useCallback(
     (score: number) => {
       if (address) {
-        crash(address, score);
+        crash();
       }
       const newScores = [...scores, score];
       setScores(newScores);

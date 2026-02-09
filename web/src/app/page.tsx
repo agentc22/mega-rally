@@ -21,7 +21,7 @@ import { useLeaderboard } from "@/hooks/useLeaderboard";
 import { useOperator } from "@/hooks/useGame";
 
 const MAX_ATTEMPTS = 3;
-const ACTIVE_TOURNAMENT_ID = 2;
+const ACTIVE_TOURNAMENT_ID = 1;
 
 type View = "lobby" | "game";
 
@@ -91,14 +91,14 @@ export default function Home() {
 
   const handleStart = useCallback(() => {
     if (address) {
-      startAttempt(ACTIVE_TOURNAMENT_ID, address);
+      startAttempt(ACTIVE_TOURNAMENT_ID);
     }
   }, [address, startAttempt]);
 
   const handleObstaclePassed = useCallback(
     (obstacleId: number) => {
       if (address) {
-        obstaclePassed(address, obstacleId);
+        obstaclePassed(obstacleId);
       }
     },
     [address, obstaclePassed]
@@ -107,7 +107,7 @@ export default function Home() {
   const handleGameOver = useCallback(
     (score: number) => {
       if (address) {
-        crash(address, score);
+        crash();
       }
       const newScores = [...scores, score];
       setScores(newScores);
@@ -145,7 +145,7 @@ export default function Home() {
         startTime: tournament[2] as bigint,
         endTime: tournament[3] as bigint,
         prizePool: tournament[4] as bigint,
-        ended: tournament[5] as boolean,
+        ended: tournament[6] as boolean,
       }
     : null;
 

@@ -6,7 +6,9 @@ export const config = createConfig({
   chains: [megaethTestnet],
   connectors: [injected()],
   transports: {
-    [megaethTestnet.id]: http("https://carrot.megaeth.com/rpc"),
+    [megaethTestnet.id]: http(
+      process.env.NEXT_PUBLIC_RPC_URL || "https://carrot.megaeth.com/rpc"
+    ),
   },
 });
 

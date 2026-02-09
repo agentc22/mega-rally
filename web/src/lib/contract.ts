@@ -1,5 +1,5 @@
-export const MEGARALLY_ADDRESS =
-  "0x6d32B9c3d539b2066b2b44915e09CDe94673bA5b" as const;
+export const MEGARALLY_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
+  "0x6d32B9c3d539b2066b2b44915e09CDe94673bA5b") as `0x${string}`;
 
 export const MEGARALLY_ABI = [
   {
@@ -115,6 +115,7 @@ export const MEGARALLY_ABI = [
       { name: "startTime", type: "uint256" },
       { name: "endTime", type: "uint256" },
       { name: "prizePool", type: "uint256" },
+      { name: "paidOut", type: "uint256" },
       { name: "ended", type: "bool" },
       { name: "winner", type: "address" },
     ],
