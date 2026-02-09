@@ -12,7 +12,7 @@ import { WebSocketServer } from "ws";
 import crypto from "crypto";
 
 const MEGARALLY_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0x3F296580DDC77c21D8d6B43B92C7aE8f021A9F8e";
+  process.env.CONTRACT_ADDRESS || "0xEF8481DAEb6e2bD8623eB414fb33f37d44DC54d7";
 
 const MEGARALLY_ABI = [
   {
@@ -60,9 +60,11 @@ const MEGARALLY_ABI = [
         components: [
           { name: "player", type: "address" },
           { name: "tournamentId", type: "uint256" },
-          { name: "scores", type: "uint256[3]" },
+          { name: "scores", type: "uint256[]" },
           { name: "attemptsUsed", type: "uint8" },
+          { name: "tickets", type: "uint8" },
           { name: "totalScore", type: "uint256" },
+          { name: "bestScore", type: "uint256" },
         ],
       },
     ],
@@ -322,7 +324,8 @@ async function validatePlayerState(tournamentId, player) {
     if (entry.player === "0x0000000000000000000000000000000000000000") {
       return { ok: false, reason: "Not entered in tournament" };
     }
-    if (Number(entry.attemptsUsed) >= 3) {
+    const maxAttempts = Number(entry.tickets) * 3;
+    if (Number(entry.attemptsUsed) >= maxAttempts) {
       return { ok: false, reason: "No attempts left" };
     }
 

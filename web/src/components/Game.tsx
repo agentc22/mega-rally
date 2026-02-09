@@ -97,6 +97,7 @@ export default function Game({
     if (!engine) return;
 
     if (gameState === "idle") {
+      if (attemptNumber >= maxAttempts) return; // No attempts left
       setGameState("playing");
       if (scoreRef.current) scoreRef.current.textContent = "0";
       engine.start();

@@ -4,7 +4,8 @@ pragma solidity ^0.8.20;
 contract MegaRally {
     // Constants
     uint256 public constant FEE_BPS = 200; // 2%
-    uint256 public constant MAX_ATTEMPTS = 3;
+    uint256 public constant ATTEMPTS_PER_TICKET = 3;
+    uint256 public constant MAX_TICKETS = 10;
     uint256 public constant MAX_PLAYERS = 256;
 
     // Structs
@@ -22,9 +23,11 @@ contract MegaRally {
     struct Entry {
         address player;
         uint256 tournamentId;
-        uint256[3] scores;
+        uint256[] scores;
         uint8 attemptsUsed;
+        uint8 tickets;
         uint256 totalScore;
+        uint256 bestScore;
     }
 
     // State
@@ -45,6 +48,7 @@ contract MegaRally {
     event ObstaclePassed(uint256 indexed tournamentId, address indexed player, uint8 attemptNumber, uint256 obstacleId);
     event AttemptEnded(uint256 indexed tournamentId, address indexed player, uint8 attemptNumber, uint256 score);
     event TournamentEnded(uint256 indexed tournamentId, address indexed winner, uint256 prize);
+    event TicketPurchased(uint256 indexed tournamentId, address indexed player, uint8 ticketNumber);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
@@ -114,21 +118,27 @@ contract MegaRally {
         require(t.id != 0, "Tournament doesn't exist");
         require(block.timestamp < t.endTime, "Tournament ended");
         require(msg.value == t.entryFee, "Wrong entry fee");
-        require(entries[_tournamentId][msg.sender].player == address(0), "Already entered");
-        require(tournamentPlayers[_tournamentId].length < MAX_PLAYERS, "Tournament full");
 
-        entries[_tournamentId][msg.sender] = Entry({
-            player: msg.sender,
-            tournamentId: _tournamentId,
-            scores: [uint256(0), uint256(0), uint256(0)],
-            attemptsUsed: 0,
-            totalScore: 0
-        });
+        Entry storage e = entries[_tournamentId][msg.sender];
 
-        tournamentPlayers[_tournamentId].push(msg.sender);
+        if (e.player == address(0)) {
+            // First ticket — new entry
+            require(tournamentPlayers[_tournamentId].length < MAX_PLAYERS, "Tournament full");
+            e.player = msg.sender;
+            e.tournamentId = _tournamentId;
+            e.attemptsUsed = 0;
+            e.tickets = 1;
+            e.totalScore = 0;
+            tournamentPlayers[_tournamentId].push(msg.sender);
+            emit PlayerEntered(_tournamentId, msg.sender);
+        } else {
+            // Additional ticket
+            require(e.tickets < MAX_TICKETS, "Max tickets reached");
+            e.tickets++;
+            emit TicketPurchased(_tournamentId, msg.sender, e.tickets);
+        }
+
         t.prizePool += msg.value;
-
-        emit PlayerEntered(_tournamentId, msg.sender);
     }
 
     // --- Gameplay (operator only) ---
@@ -138,7 +148,7 @@ contract MegaRally {
         require(!t.ended, "Tournament ended");
         Entry storage e = entries[_tournamentId][_player];
         require(e.player != address(0), "Not entered");
-        require(e.attemptsUsed < MAX_ATTEMPTS, "No attempts left");
+        require(e.attemptsUsed < e.tickets * uint8(ATTEMPTS_PER_TICKET), "No attempts left");
 
         emit AttemptStarted(_tournamentId, _player, e.attemptsUsed + 1);
     }
@@ -157,11 +167,14 @@ contract MegaRally {
         require(!t.ended, "Tournament ended");
         Entry storage e = entries[_tournamentId][_player];
         require(e.player != address(0), "Not entered");
-        require(e.attemptsUsed < MAX_ATTEMPTS, "No attempts left");
+        require(e.attemptsUsed < e.tickets * uint8(ATTEMPTS_PER_TICKET), "No attempts left");
 
-        e.scores[e.attemptsUsed] = _score;
+        e.scores.push(_score);
         e.attemptsUsed++;
         e.totalScore += _score;
+        if (_score > e.bestScore) {
+            e.bestScore = _score;
+        }
 
         emit AttemptEnded(_tournamentId, _player, e.attemptsUsed, _score);
     }
@@ -181,8 +194,8 @@ contract MegaRally {
         // Bounded by MAX_PLAYERS (256) — safe from gas limit
         for (uint256 i = 0; i < players.length; i++) {
             Entry storage e = entries[_tournamentId][players[i]];
-            if (e.totalScore > highestScore) {
-                highestScore = e.totalScore;
+            if (e.bestScore > highestScore) {
+                highestScore = e.bestScore;
                 winner = e.player;
             }
         }
@@ -246,7 +259,7 @@ contract MegaRally {
         uint256[] memory scores = new uint256[](players.length);
 
         for (uint256 i = 0; i < players.length; i++) {
-            scores[i] = entries[_tournamentId][players[i]].totalScore;
+            scores[i] = entries[_tournamentId][players[i]].bestScore;
         }
 
         return (players, scores);

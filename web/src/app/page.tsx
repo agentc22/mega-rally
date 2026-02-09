@@ -16,12 +16,12 @@ import {
   useTournament,
   useEntry,
   useEnterTournament,
+  useActiveTournamentId,
 } from "@/hooks/useTournament";
 import { useLeaderboard } from "@/hooks/useLeaderboard";
 import { useOperator } from "@/hooks/useGame";
 
-const MAX_ATTEMPTS = 3;
-const ACTIVE_TOURNAMENT_ID = 1;
+const ATTEMPTS_PER_TICKET = 3;
 
 type View = "lobby" | "game";
 
@@ -35,14 +35,15 @@ export default function Home() {
   const [allDone, setAllDone] = useState(false);
 
   // Contract reads
+  const activeTournamentId = useActiveTournamentId();
   const { data: tournamentCount } = useTournamentCount();
-  const { data: tournament } = useTournament(ACTIVE_TOURNAMENT_ID);
+  const { data: tournament } = useTournament(activeTournamentId);
   const { data: entry, refetch: refetchEntry } =
-    useEntry(ACTIVE_TOURNAMENT_ID);
+    useEntry(activeTournamentId);
   const {
     entries: leaderboard,
     refetch: refetchLeaderboard,
-  } = useLeaderboard(ACTIVE_TOURNAMENT_ID);
+  } = useLeaderboard(activeTournamentId);
 
   const enterTournament = useEnterTournament();
   const { startAttempt, obstaclePassed, crash } = useOperator();
@@ -50,6 +51,21 @@ export default function Home() {
   // Track entry state from contract
   const isEntered = entry ? entry.player !== "0x0000000000000000000000000000000000000000" : false;
   const contractAttemptsUsed = entry ? Number(entry.attemptsUsed) : 0;
+  const tickets = entry ? Number(entry.tickets) : 1;
+  const maxAttempts = tickets * ATTEMPTS_PER_TICKET;
+
+  // Reset state when tournament changes
+  const prevTournamentRef = useRef(activeTournamentId);
+  useEffect(() => {
+    if (activeTournamentId !== prevTournamentRef.current) {
+      prevTournamentRef.current = activeTournamentId;
+      syncedRef.current = false;
+      setScores([]);
+      setCurrentAttempt(0);
+      setTotalScore(0);
+      setAllDone(false);
+    }
+  }, [activeTournamentId]);
 
   // Sync attempts from contract on load
   const syncedRef = useRef(false);
@@ -63,18 +79,21 @@ export default function Home() {
       }
       setScores(contractScores);
       setTotalScore(Number(entry!.totalScore));
-      if (contractAttemptsUsed >= MAX_ATTEMPTS) {
+      if (contractAttemptsUsed >= maxAttempts) {
         setAllDone(true);
       }
     }
-  }, [isEntered, contractAttemptsUsed, entry]);
+  }, [isEntered, contractAttemptsUsed, entry, maxAttempts]);
 
   const handleEnter = useCallback(async () => {
     if (!tournament) return;
     setEntering(true);
     try {
-      await enterTournament(ACTIVE_TOURNAMENT_ID, tournament[1]); // entryFee
+      await enterTournament(activeTournamentId, tournament[1]); // entryFee
       await refetchEntry();
+      // If buying additional ticket, reset allDone so player can play again
+      setAllDone(false);
+      syncedRef.current = false; // re-sync from contract on next render
     } catch (err) {
       console.error("Enter failed:", err);
     }
@@ -91,7 +110,7 @@ export default function Home() {
 
   const handleStart = useCallback(() => {
     if (address) {
-      startAttempt(ACTIVE_TOURNAMENT_ID);
+      startAttempt(activeTournamentId);
     }
   }, [address, startAttempt]);
 
@@ -115,7 +134,7 @@ export default function Home() {
       setTotalScore(newTotal);
       const nextAttempt = currentAttempt + 1;
       setCurrentAttempt(nextAttempt);
-      if (nextAttempt >= MAX_ATTEMPTS) {
+      if (nextAttempt >= maxAttempts) {
         setAllDone(true);
         // Refresh leaderboard after all attempts
         setTimeout(() => refetchLeaderboard(), 3000);
@@ -180,7 +199,7 @@ export default function Home() {
           <HUD
             scores={scores}
             currentAttempt={currentAttempt}
-            maxAttempts={MAX_ATTEMPTS}
+            maxAttempts={maxAttempts}
             totalScore={totalScore}
           />
         </div>
@@ -190,7 +209,7 @@ export default function Home() {
           <div className="w-full h-full max-w-4xl">
             <Game
               attemptNumber={currentAttempt}
-              maxAttempts={MAX_ATTEMPTS}
+              maxAttempts={maxAttempts}
               onScoreChange={handleScoreChange}
               onGameOver={handleGameOver}
               onObstaclePassed={handleObstaclePassed}
@@ -290,35 +309,129 @@ export default function Home() {
             The first real-time onchain endless runner on MegaETH
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => {
-                handleReset();
-                setView("game");
-              }}
-              className="px-8 py-3 rounded-lg font-bold text-black text-base transition-all hover:scale-105"
-              style={{
-                background: "linear-gradient(135deg, #00f0ff, #b024ff)",
-              }}
-            >
-              PLAY NOW
-            </button>
-            {!isConnected && (
+            {!isConnected ? (
               <button
                 onClick={() => {
-                  // Scroll to tournament section
                   document.getElementById("tournament")?.scrollIntoView({ behavior: "smooth" });
                 }}
-                className="px-8 py-3 rounded-lg font-bold text-base border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 transition-all"
+                className="px-8 py-3 rounded-lg font-bold text-black text-base transition-all hover:scale-105"
+                style={{
+                  background: "linear-gradient(135deg, #00f0ff, #b024ff)",
+                }}
               >
                 ENTER TOURNAMENT
+              </button>
+            ) : !isEntered ? (
+              <button
+                onClick={handleEnter}
+                disabled={entering}
+                className="px-8 py-3 rounded-lg font-bold text-black text-base transition-all hover:scale-105 disabled:opacity-50"
+                style={{
+                  background: "linear-gradient(135deg, #00f0ff, #b024ff)",
+                }}
+              >
+                {entering ? "ENTERING..." : `ENTER TOURNAMENT (${tournamentData ? formatEther(tournamentData.entryFee) : "0.01"} ETH)`}
+              </button>
+            ) : contractAttemptsUsed < maxAttempts ? (
+              <button
+                onClick={() => setView("game")}
+                className="px-8 py-3 rounded-lg font-bold text-black text-base transition-all hover:scale-105"
+                style={{
+                  background: "linear-gradient(135deg, #ffe814, #ff2d95)",
+                }}
+              >
+                PLAY NOW
+              </button>
+            ) : (
+              <button
+                onClick={handleEnter}
+                disabled={entering}
+                className="px-8 py-3 rounded-lg font-bold text-black text-base transition-all hover:scale-105 disabled:opacity-50"
+                style={{
+                  background: "linear-gradient(135deg, #b024ff, #ff2d95)",
+                }}
+              >
+                {entering ? "PURCHASING..." : "BUY ANOTHER TICKET (+3 ATTEMPTS)"}
               </button>
             )}
           </div>
         </div>
       </section>
 
+      {/* ===== ACTIVE TOURNAMENT ===== */}
+      <section
+        id="tournament"
+        className="py-12 md:py-16 px-4"
+      >
+        <div className="max-w-2xl mx-auto">
+          <h2
+            className="text-sm font-bold uppercase tracking-widest text-center mb-8"
+            style={{ color: "#b024ff" }}
+          >
+            Active Tournament
+          </h2>
+
+          {tournamentData && tournamentData.id > 0 ? (
+            <div>
+              <TournamentCard
+                id={tournamentData.id}
+                entryFee={tournamentData.entryFee}
+                endTime={tournamentData.endTime}
+                prizePool={tournamentData.prizePool}
+                ticketCount={tournamentData.entryFee > 0n ? Number(tournamentData.prizePool / tournamentData.entryFee) : 0}
+                ended={tournamentData.ended}
+                isEntered={isEntered}
+                onEnter={handleEnter}
+                onPlay={handlePlay}
+                entering={entering}
+              />
+
+              {!isConnected && (
+                <p className="text-center text-gray-600 text-xs mt-3">
+                  Connect your wallet to enter
+                </p>
+              )}
+
+              {isEntered && (
+                <div className="mt-3 text-center space-y-2">
+                  <p className="text-xs text-gray-500">
+                    Attempts: {contractAttemptsUsed}/{maxAttempts}
+                    {tickets > 1 && (
+                      <span className="ml-2 text-purple-400">
+                        ({tickets} tickets)
+                      </span>
+                    )}
+                    {contractAttemptsUsed > 0 && (
+                      <span className="ml-2">
+                        Total score:{" "}
+                        <span style={{ color: "#ffe814" }}>
+                          {Number(entry?.totalScore || 0)}
+                        </span>
+                      </span>
+                    )}
+                  </p>
+                  {contractAttemptsUsed >= maxAttempts && !tournamentData?.ended && (
+                    <button
+                      onClick={handleEnter}
+                      disabled={entering}
+                      className="px-4 py-1.5 rounded-lg text-xs font-bold border border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-all disabled:opacity-50"
+                    >
+                      {entering ? "BUYING..." : "BUY ANOTHER TICKET (+3 ATTEMPTS)"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-gray-600">Loading tournament...</div>
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* ===== HOW IT WORKS ===== */}
-      <section className="py-16 md:py-24 px-4">
+      <section className="py-16 md:py-24 px-4 border-t border-cyan-500/10">
         <div className="max-w-4xl mx-auto">
           <h2
             className="text-sm font-bold uppercase tracking-widest text-center mb-12"
@@ -336,12 +449,12 @@ export default function Home() {
               {
                 step: "02",
                 title: "Play",
-                desc: "Jump over obstacles and rack up points. You get 3 attempts per tournament.",
+                desc: "Jump over obstacles and rack up points. Each ticket gives 3 attempts. Buy more for extra runs.",
               },
               {
                 step: "03",
                 title: "Win",
-                desc: "Highest total score across all 3 runs wins the prize pool (98%).",
+                desc: "Highest single-attempt score wins the prize pool (98%).",
               },
             ].map((item) => (
               <div key={item.step} className="text-center md:text-left">
@@ -387,8 +500,8 @@ export default function Home() {
                 color: "#b024ff",
               },
               {
-                title: "3 Attempts",
-                desc: "Best combined score across 3 runs wins. Strategy matters.",
+                title: "Multiple Tickets",
+                desc: "Buy extra tickets for more chances. Best single run counts.",
                 color: "#ff2d95",
               },
             ].map((feature) => (
@@ -406,64 +519,6 @@ export default function Home() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ===== ACTIVE TOURNAMENT ===== */}
-      <section
-        id="tournament"
-        className="py-16 md:py-24 px-4 border-t border-cyan-500/10"
-      >
-        <div className="max-w-2xl mx-auto">
-          <h2
-            className="text-sm font-bold uppercase tracking-widest text-center mb-8"
-            style={{ color: "#b024ff" }}
-          >
-            Active Tournament
-          </h2>
-
-          {tournamentData && tournamentData.id > 0 ? (
-            <div>
-              <TournamentCard
-                id={tournamentData.id}
-                entryFee={tournamentData.entryFee}
-                endTime={tournamentData.endTime}
-                prizePool={tournamentData.prizePool}
-                playerCount={leaderboard.length}
-                ended={tournamentData.ended}
-                isEntered={isEntered}
-                onEnter={handleEnter}
-                onPlay={handlePlay}
-                entering={entering}
-              />
-
-              {!isConnected && (
-                <p className="text-center text-gray-600 text-xs mt-3">
-                  Connect your wallet to enter
-                </p>
-              )}
-
-              {isEntered && (
-                <div className="mt-3 text-center">
-                  <p className="text-xs text-gray-500">
-                    Attempts used: {contractAttemptsUsed}/{MAX_ATTEMPTS}
-                    {contractAttemptsUsed > 0 && (
-                      <span className="ml-2">
-                        Total score:{" "}
-                        <span style={{ color: "#ffe814" }}>
-                          {Number(entry?.totalScore || 0)}
-                        </span>
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <div className="text-gray-600">Loading tournament...</div>
-            </div>
-          )}
         </div>
       </section>
 
@@ -500,26 +555,32 @@ export default function Home() {
 
       {/* ===== FOOTER ===== */}
       <footer className="py-8 px-4 border-t border-cyan-500/10">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
-          <div className="flex items-center gap-4">
+        <div className="max-w-4xl mx-auto space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
+            <div className="flex items-center gap-4">
+              <a
+                href="https://testnet.megaethscan.io/address/0xEF8481DAEb6e2bD8623eB414fb33f37d44DC54d7"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono hover:text-cyan-400 transition-colors"
+              >
+                0xEF84...54d7
+              </a>
+              <span>Built on MegaETH</span>
+            </div>
             <a
-              href="https://testnet.megaethscan.io/address/0x3F296580DDC77c21D8d6B43B92C7aE8f021A9F8e"
+              href="https://github.com/agentc22/mega-rally"
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono hover:text-cyan-400 transition-colors"
+              className="hover:text-cyan-400 transition-colors"
             >
-              0x3F29...87A28
+              GitHub
             </a>
-            <span>Built on MegaETH</span>
           </div>
-          <a
-            href="https://github.com/agentc22/mega-rally"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-cyan-400 transition-colors"
-          >
-            GitHub
-          </a>
+          <p className="text-center text-[10px] text-gray-700 leading-relaxed max-w-lg mx-auto">
+            Built by a human + Claude. This is an experimental project on testnet.
+            Smart contracts are unaudited. Use at your own risk and never deposit funds you cannot afford to lose.
+          </p>
         </div>
       </footer>
     </div>

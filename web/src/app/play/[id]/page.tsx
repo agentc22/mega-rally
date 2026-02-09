@@ -11,7 +11,7 @@ import { useEntry } from "@/hooks/useTournament";
 import { useLeaderboard } from "@/hooks/useLeaderboard";
 import { useOperator } from "@/hooks/useGame";
 
-const MAX_ATTEMPTS = 3;
+const ATTEMPTS_PER_TICKET = 3;
 
 export default function PlayPage() {
   const params = useParams();
@@ -30,6 +30,8 @@ export default function PlayPage() {
   const { startAttempt, obstaclePassed, crash } = useOperator();
 
   const contractAttemptsUsed = entry ? Number(entry.attemptsUsed) : 0;
+  const tickets = entry ? Number(entry.tickets) : 1;
+  const maxAttempts = tickets * ATTEMPTS_PER_TICKET;
 
   // Sync from contract
   const syncedRef = useRef(false);
@@ -47,11 +49,11 @@ export default function PlayPage() {
       }
       setScores(contractScores);
       setTotalScore(Number(entry.totalScore));
-      if (contractAttemptsUsed >= MAX_ATTEMPTS) {
+      if (contractAttemptsUsed >= maxAttempts) {
         setAllDone(true);
       }
     }
-  }, [entry, contractAttemptsUsed]);
+  }, [entry, contractAttemptsUsed, maxAttempts]);
 
   const handleStart = useCallback(() => {
     if (address) {
@@ -79,7 +81,7 @@ export default function PlayPage() {
       setTotalScore(newTotal);
       const nextAttempt = currentAttempt + 1;
       setCurrentAttempt(nextAttempt);
-      if (nextAttempt >= MAX_ATTEMPTS) {
+      if (nextAttempt >= maxAttempts) {
         setAllDone(true);
         setTimeout(() => refetchLeaderboard(), 3000);
       }
@@ -114,7 +116,7 @@ export default function PlayPage() {
         <HUD
           scores={scores}
           currentAttempt={currentAttempt}
-          maxAttempts={MAX_ATTEMPTS}
+          maxAttempts={maxAttempts}
           totalScore={totalScore}
         />
       </div>
@@ -123,7 +125,7 @@ export default function PlayPage() {
         <div className="w-full h-full max-w-4xl">
           <Game
             attemptNumber={currentAttempt}
-            maxAttempts={MAX_ATTEMPTS}
+            maxAttempts={maxAttempts}
             onScoreChange={() => {}}
             onGameOver={handleGameOver}
             onObstaclePassed={handleObstaclePassed}

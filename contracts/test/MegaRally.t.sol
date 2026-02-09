@@ -34,17 +34,68 @@ contract MegaRallyTest is Test {
         MegaRally.Entry memory e = rally.getEntry(1, alice);
         assertEq(e.player, alice);
         assertEq(e.attemptsUsed, 0);
+        assertEq(e.tickets, 1);
     }
 
-    function test_cannotEnterTwice() public {
+    function test_buyMultipleTickets() public {
         rally.createTournament(0.01 ether, 1 days);
 
-        vm.prank(alice);
+        vm.startPrank(alice);
         rally.enter{value: 0.01 ether}(1);
+        rally.enter{value: 0.01 ether}(1); // second ticket
+        rally.enter{value: 0.01 ether}(1); // third ticket
+        vm.stopPrank();
 
-        vm.prank(alice);
-        vm.expectRevert("Already entered");
+        MegaRally.Entry memory e = rally.getEntry(1, alice);
+        assertEq(e.tickets, 3);
+        assertEq(e.attemptsUsed, 0);
+
+        // Prize pool should be 0.03 ETH
+        (,,,, uint256 prizePool,,,) = rally.tournaments(1);
+        assertEq(prizePool, 0.03 ether);
+
+        // Only 1 entry in players array
+        address[] memory players = rally.getTournamentPlayers(1);
+        assertEq(players.length, 1);
+    }
+
+    function test_multipleTicketsGiveMoreAttempts() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.startPrank(alice);
+        rally.enter{value: 0.01 ether}(1); // 3 attempts
+        rally.enter{value: 0.01 ether}(1); // 3 more = 6 total
+        vm.stopPrank();
+
+        vm.startPrank(operator);
+        // Use all 6 attempts
+        for (uint256 i = 0; i < 6; i++) {
+            rally.startAttempt(1, alice);
+            rally.recordAttemptEnd(1, alice, 10);
+        }
+
+        // 7th attempt should fail
+        vm.expectRevert("No attempts left");
+        rally.recordAttemptEnd(1, alice, 10);
+        vm.stopPrank();
+
+        MegaRally.Entry memory e = rally.getEntry(1, alice);
+        assertEq(e.attemptsUsed, 6);
+        assertEq(e.totalScore, 60);
+        assertEq(e.scores.length, 6);
+    }
+
+    function test_maxTicketsLimit() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        vm.startPrank(alice);
+        for (uint256 i = 0; i < 10; i++) {
+            rally.enter{value: 0.01 ether}(1);
+        }
+
+        vm.expectRevert("Max tickets reached");
         rally.enter{value: 0.01 ether}(1);
+        vm.stopPrank();
     }
 
     function test_wrongEntryFee() public {
@@ -82,7 +133,7 @@ contract MegaRallyTest is Test {
         assertEq(e.scores[2], 3);
     }
 
-    function test_noMoreThan3Attempts() public {
+    function test_noMoreThan3AttemptsPerTicket() public {
         rally.createTournament(0.01 ether, 1 days);
 
         vm.prank(alice);
@@ -129,6 +180,41 @@ contract MegaRallyTest is Test {
         // Prize pool = 0.02 ETH, fee = 2% = 0.0004, prize = 0.0196
         assertEq(bob.balance - bobBalBefore, 0.0196 ether);
         assertEq(owner.balance - ownerBalBefore, 0.0004 ether);
+    }
+
+    function test_endTournamentWithMultipleTickets() public {
+        rally.createTournament(0.01 ether, 1 days);
+
+        // Alice buys 2 tickets (6 attempts)
+        vm.startPrank(alice);
+        rally.enter{value: 0.01 ether}(1);
+        rally.enter{value: 0.01 ether}(1);
+        vm.stopPrank();
+
+        // Bob buys 1 ticket (3 attempts)
+        vm.prank(bob);
+        rally.enter{value: 0.01 ether}(1);
+
+        vm.startPrank(operator);
+        // Alice uses 6 attempts, total = 60
+        for (uint256 i = 0; i < 6; i++) {
+            rally.recordAttemptEnd(1, alice, 10);
+        }
+        // Bob uses 3 attempts, total = 15
+        rally.recordAttemptEnd(1, bob, 5);
+        rally.recordAttemptEnd(1, bob, 5);
+        rally.recordAttemptEnd(1, bob, 5);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 1 days + 1);
+
+        uint256 aliceBalBefore = alice.balance;
+        rally.endTournament(1);
+
+        // Prize pool = 0.03 ETH, alice wins with 60 > 15
+        uint256 fee = (0.03 ether * 200) / 10000;
+        uint256 prize = 0.03 ether - fee;
+        assertEq(alice.balance - aliceBalBefore, prize);
     }
 
     function test_cannotEndBeforeTime() public {

@@ -7,7 +7,7 @@ interface TournamentCardProps {
   entryFee: bigint;
   endTime: bigint;
   prizePool: bigint;
-  playerCount: number;
+  ticketCount: number;
   ended: boolean;
   isEntered: boolean;
   onEnter: () => void;
@@ -20,7 +20,7 @@ export default function TournamentCard({
   entryFee,
   endTime,
   prizePool,
-  playerCount,
+  ticketCount,
   ended,
   isEntered,
   onEnter,
@@ -67,7 +67,7 @@ export default function TournamentCard({
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+      <div className={`grid ${isActive ? "grid-cols-4" : "grid-cols-3"} gap-2 mb-3 text-center`}>
         <div>
           <div className="text-xs text-gray-500">Entry</div>
           <div className="text-sm font-bold text-white">
@@ -84,13 +84,19 @@ export default function TournamentCard({
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-500">
-            {isActive ? "Time Left" : "Players"}
-          </div>
+          <div className="text-xs text-gray-500">Tickets</div>
           <div className="text-sm font-bold text-white">
-            {isActive ? `${hours}h ${mins}m` : playerCount}
+            {ticketCount}
           </div>
         </div>
+        {isActive && (
+          <div>
+            <div className="text-xs text-gray-500">Time Left</div>
+            <div className="text-sm font-bold text-white">
+              {hours}h {mins}m
+            </div>
+          </div>
+        )}
       </div>
 
       {isActive && !isEntered && (

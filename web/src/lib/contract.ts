@@ -1,5 +1,5 @@
 export const MEGARALLY_ADDRESS = (process.env.NEXT_PUBLIC_CONTRACT_ADDRESS ||
-  "0x3F296580DDC77c21D8d6B43B92C7aE8f021A9F8e") as `0x${string}`;
+  "0xEF8481DAEb6e2bD8623eB414fb33f37d44DC54d7") as `0x${string}`;
 
 export const MEGARALLY_ABI = [
   {
@@ -16,7 +16,14 @@ export const MEGARALLY_ABI = [
   },
   {
     type: "function",
-    name: "MAX_ATTEMPTS",
+    name: "ATTEMPTS_PER_TICKET",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "MAX_TICKETS",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
@@ -59,9 +66,11 @@ export const MEGARALLY_ABI = [
         components: [
           { name: "player", type: "address" },
           { name: "tournamentId", type: "uint256" },
-          { name: "scores", type: "uint256[3]" },
+          { name: "scores", type: "uint256[]" },
           { name: "attemptsUsed", type: "uint8" },
+          { name: "tickets", type: "uint8" },
           { name: "totalScore", type: "uint256" },
+          { name: "bestScore", type: "uint256" },
         ],
       },
     ],
@@ -165,6 +174,15 @@ export const MEGARALLY_ABI = [
       { name: "player", type: "address", indexed: true },
       { name: "attemptNumber", type: "uint8", indexed: false },
       { name: "score", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "TicketPurchased",
+    inputs: [
+      { name: "tournamentId", type: "uint256", indexed: true },
+      { name: "player", type: "address", indexed: true },
+      { name: "ticketNumber", type: "uint8", indexed: false },
     ],
   },
   {
