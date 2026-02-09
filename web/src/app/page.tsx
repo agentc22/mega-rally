@@ -503,17 +503,17 @@ export default function Home() {
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-600">
           <div className="flex items-center gap-4">
             <a
-              href="https://testnet.megaethscan.io/address/0x6d32B9c3d539b2066b2b44915e09CDe94673bA5b"
+              href="https://testnet.megaethscan.io/address/0x3F296580DDC77c21D8d6B43B92C7aE8f021A9F8e"
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono hover:text-cyan-400 transition-colors"
             >
-              0x6d32...bA5b
+              0x3F29...87A28
             </a>
             <span>Built on MegaETH</span>
           </div>
           <a
-            href="https://github.com"
+            href="https://github.com/agentc22/mega-rally"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-cyan-400 transition-colors"
