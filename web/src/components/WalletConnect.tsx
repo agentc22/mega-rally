@@ -9,7 +9,7 @@ export default function WalletConnect() {
   const { address, isConnected, chainId } = useAccount();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const { connect, connectors } = useConnect();
+  const { connect, connectors, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
 
@@ -32,9 +32,22 @@ export default function WalletConnect() {
         )}
         <Link
           href={`/profile/${address}`}
-          className="text-xs text-cyan-400 font-mono hover:text-cyan-300 transition-colors"
+          className="flex items-center gap-1.5 text-xs text-cyan-400 font-mono hover:text-cyan-300 transition-colors"
           title="View profile"
         >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
           {address.slice(0, 6)}...{address.slice(-4)}
         </Link>
         <button
@@ -50,7 +63,7 @@ export default function WalletConnect() {
   return (
     <button
       onClick={() => {
-        const connector = connectors[0];
+        const connector = connectors.find((c) => c.type === "injected") ?? connectors[0];
         if (connector) connect({ connector, chainId: megaethTestnet.id });
       }}
       className="px-3 py-1.5 rounded-lg text-sm font-bold text-black transition-all hover:scale-105"
